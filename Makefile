@@ -4,7 +4,7 @@
 include config.mk
 
 # flags for compiling
-DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\"
+DWLCPPFLAGS = -Isrc/ -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\"
 DWLDEVCFLAGS = -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wno-sign-compare -Wshadow -Wunused-macros\
 	-Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types
 
@@ -18,7 +18,7 @@ all: bin dwl
 dwl: bin/dwl.o bin/util.o
 	$(CC) bin/dwl.o bin/util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
-bin/dwl.o: src/dwl.c config.mk src/config.h src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
+bin/dwl.o: src/dwl.c config.mk src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
 
 bin/util.o: src/util.c src/util.h
 
@@ -40,9 +40,6 @@ wlr-layer-shell-unstable-v1-protocol.h:
 
 bin:
 	mkdir $@/
-
-config.h:
-	cp src/config.def.h src/$@
 
 clean:
 	rm -f src/*-protocol.h
@@ -70,4 +67,4 @@ uninstall:
 .DELETE_ON_ERROR:
 .SUFFIXES: .c .o
 bin/%.o:
-	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -Isrc/ -c $< -o $@ 
+	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -c $< -o $@ 
