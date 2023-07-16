@@ -13,11 +13,14 @@ PKGS      = wlroots wayland-server xkbcommon libinput
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
-all: dwl
-dwl: dwl.o util.o
-	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
-dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
-util.o: util.c util.h
+all: bin dwl
+
+dwl: bin/dwl.o bin/util.o
+	$(CC) bin/dwl.o bin/util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
+
+bin/dwl.o: src/dwl.c config.mk src/config.h src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
+
+bin/util.o: src/util.c src/util.h
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -28,14 +31,22 @@ WAYLAND_PROTOCOLS = `$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols`
 xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+	mv $@ src/
+
 wlr-layer-shell-unstable-v1-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		protocols/wlr-layer-shell-unstable-v1.xml $@
+	mv $@ src/
+
+bin:
+	mkdir $@/
 
 config.h:
-	cp config.def.h $@
+	cp src/config.def.h src/$@
+
 clean:
-	rm -f dwl *.o *-protocol.h
+	rm -f src/*-protocol.h
+	rm -r bin/
 
 dist: clean
 	mkdir -p dwl-$(VERSION)
@@ -52,9 +63,11 @@ install: dwl
 	mkdir -p $(DESTDIR)$(MANDIR)/man1
 	cp -f dwl.1 $(DESTDIR)$(MANDIR)/man1
 	chmod 644 $(DESTDIR)$(MANDIR)/man1/dwl.1
+
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/dwl $(DESTDIR)$(MANDIR)/man1/dwl.1
 
+.DELETE_ON_ERROR:
 .SUFFIXES: .c .o
-.c.o:
-	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -c $<
+bin/%.o:
+	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -Isrc/ -c $< -o $@ 
