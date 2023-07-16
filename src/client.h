@@ -5,13 +5,6 @@
  * that they will simply compile out if the chosen #defines leave them unused.
  */
 
-/* Leave these functions first; they're used in the others */
-static inline int
-client_is_x11(Client *c)
-{
-	return 0;
-}
-
 static inline void
 client_get_size_hints(Client *c, struct wlr_box *max, struct wlr_box *min)
 {
