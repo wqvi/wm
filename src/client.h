@@ -17,7 +17,7 @@ client_get_size_hints(Client *c, struct wlr_box *max, struct wlr_box *min)
 {
 	struct wlr_xdg_toplevel *toplevel;
 	struct wlr_xdg_toplevel_state *state;
-	toplevel = c->surface.xdg->toplevel;
+	toplevel = c->surface->toplevel;
 	state = &toplevel->current;
 	max->width = state->max_width;
 	max->height = state->max_height;
@@ -28,7 +28,7 @@ client_get_size_hints(Client *c, struct wlr_box *max, struct wlr_box *min)
 static inline struct wlr_surface *
 client_surface(Client *c)
 {
-	return c->surface.xdg->surface;
+	return c->surface->surface;
 }
 
 static inline int
@@ -97,9 +97,9 @@ client_activate_surface(struct wlr_surface *s, int activated)
 static inline uint32_t
 client_set_bounds(Client *c, int32_t width, int32_t height)
 {
-	if (c->surface.xdg->client->shell->version >=
+	if (c->surface->client->shell->version >=
 			XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION && width >= 0 && height >= 0)
-		return wlr_xdg_toplevel_set_bounds(c->surface.xdg->toplevel, width, height);
+		return wlr_xdg_toplevel_set_bounds(c->surface->toplevel, width, height);
 	return 0;
 }
 
@@ -107,27 +107,27 @@ static inline void
 client_for_each_surface(Client *c, wlr_surface_iterator_func_t fn, void *data)
 {
 	wlr_surface_for_each_surface(client_surface(c), fn, data);
-	wlr_xdg_surface_for_each_popup_surface(c->surface.xdg, fn, data);
+	wlr_xdg_surface_for_each_popup_surface(c->surface, fn, data);
 }
 
 static inline const char *
 client_get_appid(Client *c)
 {
-	return c->surface.xdg->toplevel->app_id;
+	return c->surface->toplevel->app_id;
 }
 
 static inline void
 client_get_geometry(Client *c, struct wlr_box *geom)
 {
-	wlr_xdg_surface_get_geometry(c->surface.xdg, geom);
+	wlr_xdg_surface_get_geometry(c->surface, geom);
 }
 
 static inline Client *
 client_get_parent(Client *c)
 {
 	Client *p = NULL;
-	if (c->surface.xdg->toplevel->parent)
-		toplevel_from_wlr_surface(c->surface.xdg->toplevel->parent->base->surface, &p, NULL);
+	if (c->surface->toplevel->parent)
+		toplevel_from_wlr_surface(c->surface->toplevel->parent->base->surface, &p, NULL);
 
 	return p;
 }
@@ -135,7 +135,7 @@ client_get_parent(Client *c)
 static inline const char *
 client_get_title(Client *c)
 {
-	return c->surface.xdg->toplevel->title;
+	return c->surface->toplevel->title;
 }
 
 static inline int
@@ -150,7 +150,7 @@ client_is_float_type(Client *c)
 static inline int
 client_is_mapped(Client *c)
 {
-	return c->surface.xdg->mapped;
+	return c->surface->mapped;
 }
 
 static inline int
@@ -174,7 +174,7 @@ client_is_stopped(Client *c)
 	int pid;
 	siginfo_t in = {0};
 
-	wl_client_get_credentials(c->surface.xdg->client->client, &pid, NULL, NULL);
+	wl_client_get_credentials(c->surface->client->client, &pid, NULL, NULL);
 	if (waitid(P_PID, pid, &in, WNOHANG|WCONTINUED|WSTOPPED|WNOWAIT) < 0) {
 		/* This process is not our child process, while is very unluckely that
 		 * it is stopped, in order to do not skip frames assume that it is. */
@@ -215,34 +215,34 @@ client_restack_surface(Client *c)
 static inline void
 client_send_close(Client *c)
 {
-	wlr_xdg_toplevel_send_close(c->surface.xdg->toplevel);
+	wlr_xdg_toplevel_send_close(c->surface->toplevel);
 }
 
 static inline void
 client_set_fullscreen(Client *c, int fullscreen)
 {
-	wlr_xdg_toplevel_set_fullscreen(c->surface.xdg->toplevel, fullscreen);
+	wlr_xdg_toplevel_set_fullscreen(c->surface->toplevel, fullscreen);
 }
 
 static inline uint32_t
 client_set_size(Client *c, uint32_t width, uint32_t height)
 {
-	if (width == c->surface.xdg->toplevel->current.width
-			&& height ==c->surface.xdg->toplevel->current.height)
+	if (width == c->surface->toplevel->current.width
+			&& height ==c->surface->toplevel->current.height)
 		return 0;
-	return wlr_xdg_toplevel_set_size(c->surface.xdg->toplevel, width, height);
+	return wlr_xdg_toplevel_set_size(c->surface->toplevel, width, height);
 }
 
 static inline void
 client_set_tiled(Client *c, uint32_t edges)
 {
-	wlr_xdg_toplevel_set_tiled(c->surface.xdg->toplevel, edges);
+	wlr_xdg_toplevel_set_tiled(c->surface->toplevel, edges);
 }
 
 static inline struct wlr_surface *
 client_surface_at(Client *c, double cx, double cy, double *sx, double *sy)
 {
-	return wlr_xdg_surface_surface_at(c->surface.xdg, cx, cy, sx, sy);
+	return wlr_xdg_surface_surface_at(c->surface, cx, cy, sx, sy);
 }
 
 static inline int
@@ -254,5 +254,5 @@ client_wants_focus(Client *c)
 static inline int
 client_wants_fullscreen(Client *c)
 {
-	return c->surface.xdg->toplevel->requested.fullscreen;
+	return c->surface->toplevel->requested.fullscreen;
 }

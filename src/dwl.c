@@ -51,7 +51,8 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
-#include <xkbcommon/xkbcommon.h>
+
+#include "wm.h"
 
 #include "util.h"
 
@@ -70,57 +71,6 @@
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
 enum { XDGShell, LayerShell, X11Managed, X11Unmanaged }; /* client types */
 enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrFS, LyrTop, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
-
-typedef union {
-	int i;
-	uint32_t ui;
-	float f;
-	const void *v;
-} Arg;
-
-typedef struct {
-	unsigned int mod;
-	unsigned int button;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Button;
-
-typedef struct Monitor Monitor;
-typedef struct {
-	/* Must keep these three elements in this order */
-	unsigned int type; /* XDGShell or X11* */
-	struct wlr_box geom; /* layout-relative, includes border */
-	Monitor *mon;
-	struct wlr_scene_tree *scene;
-	struct wlr_scene_rect *border[4]; /* top, bottom, left, right */
-	struct wlr_scene_tree *scene_surface;
-	struct wl_list link;
-	struct wl_list flink;
-	union {
-		struct wlr_xdg_surface *xdg;
-		struct wlr_xwayland_surface *xwayland;
-	} surface;
-	struct wl_listener commit;
-	struct wl_listener map;
-	struct wl_listener maximize;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
-	struct wl_listener set_title;
-	struct wl_listener fullscreen;
-	struct wlr_box prev; /* layout-relative, includes border */
-
-	unsigned int bw;
-	uint32_t tags;
-	int isfloating, isurgent, isfullscreen;
-	uint32_t resize; /* configure serial of a pending resize */
-} Client;
-
-typedef struct {
-	uint32_t mod;
-	xkb_keysym_t keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Key;
 
 typedef struct {
 	struct wl_list link;
@@ -194,7 +144,7 @@ typedef struct {
 	const char *id;
 	const char *title;
 	uint32_t tags;
-	int isfloating;
+	int is_floating;
 	int monitor;
 } Rule;
 
@@ -391,7 +341,7 @@ static struct wl_listener session_lock_mgr_destroy = {.notify = destroysessionmg
 void
 applybounds(Client *c, struct wlr_box *bbox)
 {
-	if (!c->isfullscreen) {
+	if (!c->is_fullscreen) {
 		struct wlr_box min = {0}, max = {0};
 		client_get_size_hints(c, &max, &min);
 		/* try to set size hints */
@@ -424,7 +374,7 @@ applyrules(Client *c)
 	const Rule *r;
 	Monitor *mon = selmon, *m;
 
-	c->isfloating = client_is_float_type(c);
+	c->is_floating = client_is_float_type(c);
 	if (!(appid = client_get_appid(c)))
 		appid = broken;
 	if (!(title = client_get_title(c)))
@@ -433,7 +383,7 @@ applyrules(Client *c)
 	for (r = rules; r < END(rules); r++) {
 		if ((!r->title || strstr(title, r->title))
 				&& (!r->id || strstr(appid, r->id))) {
-			c->isfloating = r->isfloating;
+			c->is_floating = r->is_floating;
 			newtags |= r->tags;
 			i = 0;
 			wl_list_for_each(m, &mons, link)
@@ -441,7 +391,7 @@ applyrules(Client *c)
 					mon = m;
 		}
 	}
-	wlr_scene_node_reparent(&c->scene->node, layers[c->isfloating ? LyrFloat : LyrTile]);
+	wlr_scene_node_reparent(&c->scene->node, layers[c->is_floating ? LyrFloat : LyrTile]);
 	setmon(c, mon, newtags);
 }
 
@@ -454,7 +404,7 @@ arrange(Monitor *m)
 			wlr_scene_node_set_enabled(&c->scene->node, VISIBLEON(c, m));
 
 	wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
-			(c = focustop(m)) && c->isfullscreen);
+			(c = focustop(m)) && c->is_fullscreen);
 
 	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
 
@@ -694,7 +644,7 @@ closemon(Monitor *m)
 	}
 
 	wl_list_for_each(c, &clients, link) {
-		if (c->isfloating && c->geom.x > m->m.width)
+		if (c->is_floating && c->geom.x > m->m.width)
 			resize(c, (struct wlr_box){.x = c->geom.x - m->w.width, .y = c->geom.y,
 				.width = c->geom.width, .height = c->geom.height}, 0);
 		if (c->mon == m)
@@ -744,10 +694,10 @@ commitnotify(struct wl_listener *listener, void *data)
 
 	if (c->mon && !wlr_box_empty(&box) && (box.width != c->geom.width - 2 * c->bw
 			|| box.height != c->geom.height - 2 * c->bw))
-		c->isfloating ? resize(c, c->geom, 1) : arrange(c->mon);
+		c->is_floating ? resize(c, c->geom, 1) : arrange(c->mon);
 
 	/* mark a pending resize as completed */
-	if (c->resize && c->resize <= c->surface.xdg->current.configure_serial)
+	if (c->resize && c->resize <= c->surface->current.configure_serial)
 		c->resize = 0;
 }
 
@@ -978,7 +928,7 @@ createnotify(struct wl_listener *listener, void *data)
 
 	/* Allocate a Client for this surface */
 	c = xdg_surface->data = ecalloc(1, sizeof(*c));
-	c->surface.xdg = xdg_surface;
+	c->surface = xdg_surface;
 	c->bw = borderpx;
 
 	LISTEN(&xdg_surface->events.map, &c->map, mapnotify);
@@ -1184,7 +1134,7 @@ focusclient(Client *c, int lift)
 
 	if ((old_client_type = toplevel_from_wlr_surface(old, &old_c, &old_l)) == XDGShell) {
 		struct wlr_xdg_popup *popup, *tmp;
-		wl_list_for_each_safe(popup, tmp, &old_c->surface.xdg->popups, link)
+		wl_list_for_each_safe(popup, tmp, &old_c->surface->popups, link)
 			wlr_xdg_popup_destroy(popup);
 	}
 
@@ -1193,7 +1143,7 @@ focusclient(Client *c, int lift)
 		wl_list_remove(&c->flink);
 		wl_list_insert(&fstack, &c->flink);
 		selmon = c->mon;
-		c->isurgent = 0;
+		c->is_urgent = 0;
 		client_restack_surface(c);
 
 		/* Don't change border color if there is an exclusive focus or we are
@@ -1257,7 +1207,7 @@ focusstack(const Arg *arg)
 {
 	/* Focus the next or previous client (in tiling order) on selmon */
 	Client *c, *sel = focustop(selmon);
-	if (!sel || sel->isfullscreen)
+	if (!sel || sel->is_fullscreen)
 		return;
 	if (arg->i > 0) {
 		wl_list_for_each(c, &sel->link, link) {
@@ -1500,7 +1450,7 @@ mapnotify(struct wl_listener *listener, void *data)
 	c->scene = wlr_scene_tree_create(layers[LyrTile]);
 	wlr_scene_node_set_enabled(&c->scene->node, c->type != XDGShell);
 	c->scene_surface = c->type == XDGShell
-			? wlr_scene_xdg_surface_create(c->scene, c->surface.xdg)
+			? wlr_scene_xdg_surface_create(c->scene, c->surface)
 			: wlr_scene_subsurface_tree_create(c->scene, client_surface(c));
 	if (client_surface(c)) {
 		client_surface(c)->data = c->scene;
@@ -1545,7 +1495,7 @@ mapnotify(struct wl_listener *listener, void *data)
 	 * try to apply rules for them */
 	 /* TODO: https://github.com/djpohly/dwl/pull/334#issuecomment-1330166324 */
 	if (c->type == XDGShell && (p = client_get_parent(c))) {
-		c->isfloating = 1;
+		c->is_floating = 1;
 		wlr_scene_node_reparent(&c->scene->node, layers[LyrFloat]);
 		setmon(c, p->mon, p->tags);
 	} else {
@@ -1556,7 +1506,7 @@ mapnotify(struct wl_listener *listener, void *data)
 unset_fullscreen:
 	m = c->mon ? c->mon : xytomon(c->geom.x, c->geom.y);
 	wl_list_for_each(w, &clients, link)
-		if (w != c && w->isfullscreen && m == w->mon && (w->tags & c->tags))
+		if (w != c && w->is_fullscreen && m == w->mon && (w->tags & c->tags))
 			setfullscreen(w, 0);
 }
 
@@ -1569,7 +1519,7 @@ maximizenotify(struct wl_listener *listener, void *data)
 	 * to conform to xdg-shell protocol we still must send a configure.
 	 * wlr_xdg_surface_schedule_configure() is used to send an empty reply. */
 	Client *c = wl_container_of(listener, c, maximize);
-	wlr_xdg_surface_schedule_configure(c->surface.xdg);
+	wlr_xdg_surface_schedule_configure(c->surface);
 }
 
 void
@@ -1579,7 +1529,7 @@ monocle(Monitor *m)
 	int n = 0;
 
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON(c, m) || c->is_floating || c->is_fullscreen)
 			continue;
 		resize(c, m->w, 0);
 		n++;
@@ -1680,7 +1630,7 @@ moveresize(const Arg *arg)
 	if (cursor_mode != CurNormal && cursor_mode != CurPressed)
 		return;
 	xytonode(cursor->x, cursor->y, NULL, &grabc, NULL, NULL, NULL);
-	if (!grabc || client_is_unmanaged(grabc) || grabc->isfullscreen)
+	if (!grabc || client_is_unmanaged(grabc) || grabc->is_fullscreen)
 		return;
 
 	/* Float the window and tell motionnotify to grab it */
@@ -1815,7 +1765,7 @@ printstatus(void)
 			if (c->mon != m)
 				continue;
 			occ |= c->tags;
-			if (c->isurgent)
+			if (c->is_urgent)
 				urg |= c->tags;
 		}
 		if ((c = focustop(m))) {
@@ -1823,8 +1773,8 @@ printstatus(void)
 			appid = client_get_appid(c);
 			printf("%s title %s\n", m->wlr_output->name, title ? title : broken);
 			printf("%s appid %s\n", m->wlr_output->name, appid ? appid : broken);
-			printf("%s fullscreen %u\n", m->wlr_output->name, c->isfullscreen);
-			printf("%s floating %u\n", m->wlr_output->name, c->isfloating);
+			printf("%s fullscreen %u\n", m->wlr_output->name, c->is_fullscreen);
+			printf("%s floating %u\n", m->wlr_output->name, c->is_floating);
 			sel = c->tags;
 		} else {
 			printf("%s title \n", m->wlr_output->name);
@@ -1860,7 +1810,7 @@ rendermon(struct wl_listener *listener, void *data)
 	/* Render if no XDG clients have an outstanding resize and are visible on
 	 * this monitor. */
 	wl_list_for_each(c, &clients, link)
-		if (c->resize && !c->isfloating && client_is_rendered_on_mon(c, m) && !client_is_stopped(c))
+		if (c->resize && !c->is_floating && client_is_rendered_on_mon(c, m) && !client_is_stopped(c))
 			goto skip;
 	wlr_scene_output_commit(m->scene_output);
 
@@ -1982,8 +1932,8 @@ setcursor(struct wl_listener *listener, void *data)
 void
 setfloating(Client *c, int floating)
 {
-	c->isfloating = floating;
-	wlr_scene_node_reparent(&c->scene->node, layers[c->isfloating ? LyrFloat : LyrTile]);
+	c->is_floating = floating;
+	wlr_scene_node_reparent(&c->scene->node, layers[c->is_floating ? LyrFloat : LyrTile]);
 	arrange(c->mon);
 	printstatus();
 }
@@ -1991,13 +1941,13 @@ setfloating(Client *c, int floating)
 void
 setfullscreen(Client *c, int fullscreen)
 {
-	c->isfullscreen = fullscreen;
+	c->is_fullscreen = fullscreen;
 	if (!c->mon)
 		return;
 	c->bw = fullscreen ? 0 : borderpx;
 	client_set_fullscreen(c, fullscreen);
 	wlr_scene_node_reparent(&c->scene->node, layers[fullscreen
-			? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
+			? LyrFS : c->is_floating ? LyrFloat : LyrTile]);
 
 	if (fullscreen) {
 		c->prev = c->geom;
@@ -2060,7 +2010,7 @@ setmon(Client *c, Monitor *m, uint32_t newtags)
 		resize(c, c->geom, 0);
 		wlr_surface_send_enter(client_surface(c), m->wlr_output);
 		c->tags = newtags ? newtags : m->tagset[m->seltags]; /* assign tags of target monitor */
-		setfullscreen(c, c->isfullscreen); /* This will call arrange(c->mon) */
+		setfullscreen(c, c->is_fullscreen); /* This will call arrange(c->mon) */
 	}
 	focusclient(focustop(selmon), 1);
 }
@@ -2302,7 +2252,7 @@ tile(Monitor *m)
 	Client *c;
 
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen)
+		if (VISIBLEON(c, m) && !c->is_floating && !c->is_fullscreen)
 			n++;
 	if (n == 0)
 		return;
@@ -2313,7 +2263,7 @@ tile(Monitor *m)
 		mw = m->w.width;
 	i = my = ty = 0;
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON(c, m) || c->is_floating || c->is_fullscreen)
 			continue;
 		if (i < m->nmaster) {
 			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
@@ -2333,8 +2283,8 @@ togglefloating(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
 	/* return if fullscreen */
-	if (sel && !sel->isfullscreen)
-		setfloating(sel, !sel->isfloating);
+	if (sel && !sel->is_fullscreen)
+		setfloating(sel, !sel->is_floating);
 }
 
 void
@@ -2342,7 +2292,7 @@ togglefullscreen(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
 	if (sel)
-		setfullscreen(sel, !sel->isfullscreen);
+		setfullscreen(sel, !sel->is_fullscreen);
 }
 
 void
@@ -2528,7 +2478,7 @@ urgent(struct wl_listener *listener, void *data)
 	Client *c = NULL;
 	toplevel_from_wlr_surface(event->surface, &c, NULL);
 	if (c && c != focustop(selmon)) {
-		c->isurgent = 1;
+		c->is_urgent = 1;
 		printstatus();
 	}
 }
@@ -2597,13 +2547,13 @@ zoom(const Arg *arg)
 {
 	Client *c, *sel = focustop(selmon);
 
-	if (!sel || !selmon || !selmon->lt[selmon->sellt]->arrange || sel->isfloating)
+	if (!sel || !selmon || !selmon->lt[selmon->sellt]->arrange || sel->is_floating)
 		return;
 
 	/* Search for the first tiled window that is not sel, marking sel as
 	 * NULL if we pass it along the way */
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON(c, selmon) && !c->isfloating) {
+		if (VISIBLEON(c, selmon) && !c->is_floating) {
 			if (c != sel)
 				break;
 			sel = NULL;
