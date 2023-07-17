@@ -75,7 +75,6 @@ static void arrangelayer(Monitor *m, struct wl_list *list,
 static void arrangelayers(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static void buttonpress(struct wl_listener *listener, void *data);
-static void chvt(const Arg *arg);
 static void checkidleinhibitor(struct wlr_surface *exclude);
 static void cleanup(void);
 static void cleanupkeyboard(struct wl_listener *listener, void *data);
@@ -137,7 +136,6 @@ static void run(char *startup_cmd);
 static void setcursor(struct wl_listener *listener, void *data);
 static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
-static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
@@ -163,12 +161,10 @@ static void virtualkeyboard(struct wl_listener *listener, void *data);
 static Monitor *xytomon(double x, double y);
 static struct wlr_scene_node *xytonode(double x, double y, struct wlr_surface **psurface,
 		Client **pc, LayerSurface **pl, double *nx, double *ny);
-static void zoom(const Arg *arg);
 
 /* variables */
 static const char broken[] = "broken";
 static const char *cursor_image = "left_ptr";
-static pid_t child_pid = -1;
 static pid_t subprocesses[4] = { -1 };
 static int locked;
 static void *exclusive_focus;
@@ -459,12 +455,6 @@ buttonpress(struct wl_listener *listener, void *data)
 }
 
 void
-chvt(const Arg *arg)
-{
-	wlr_session_change_vt(wlr_backend_get_session(backend), arg->ui);
-}
-
-void
 checkidleinhibitor(struct wlr_surface *exclude)
 {
 	int inhibited = 0, unused_lx, unused_ly;
@@ -487,9 +477,11 @@ void
 cleanup(void)
 {
 	wl_display_destroy_clients(dpy);
-	if (child_pid > 0) {
-		kill(child_pid, SIGTERM);
-		waitpid(child_pid, NULL, 0);
+	for (int i = 0; i < 4; i++) {
+		if (subprocesses[i] > 0) {
+			kill(subprocesses[i], SIGTERM);
+			waitpid(subprocesses[i], NULL, 0);
+		}
 	}
 	wlr_backend_destroy(backend);
 	wlr_scene_node_destroy(&scene->tree.node);
@@ -1766,9 +1758,34 @@ resize(Client *c, struct wlr_box geo, int interact)
 			c->geom.height - 2 * c->bw);
 }
 
+static int run_subprocess(pid_t *pid, const char *cmd) {
+	int pipefd[2];
+	if (pipe(pipefd) == -1) return -1;
+
+	if ((*pid = fork()) == -1) return -1;
+
+	if (*pid == 0) {
+		dup2(pipefd[0], STDIN_FILENO);
+		close(pipefd[0]);
+		close(pipefd[1]);
+		execl("/bin/sh", "bin/sh", "-c", cmd, NULL);
+		die("subprocess finished");
+	}
+	dup2(pipefd[1], STDOUT_FILENO);
+	close(pipefd[1]);
+	close(pipefd[0]);
+
+	return 0;
+}
+
 void
 run(char *startup_cmd)
 {
+	pid_t foot_server = subprocesses[0];
+	pid_t dbus_update_activation_environment = subprocesses[1];
+	pid_t gentoo_pipewire_launcher = subprocesses[2];
+	pid_t somebar = subprocesses[3];
+
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(dpy);
 	if (!socket)
@@ -1780,24 +1797,11 @@ run(char *startup_cmd)
 	if (!wlr_backend_start(backend))
 		die("startup: backend_start");
 
-	/* Now that the socket exists and the backend is started, run the startup command */
-	if (startup_cmd) {
-		int piperw[2];
-		if (pipe(piperw) < 0)
-			die("startup: pipe:");
-		if ((child_pid = fork()) < 0)
-			die("startup: fork:");
-		if (child_pid == 0) {
-			dup2(piperw[0], STDIN_FILENO);
-			close(piperw[0]);
-			close(piperw[1]);
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
-			die("startup: execl:");
-		}
-		dup2(piperw[1], STDOUT_FILENO);
-		close(piperw[1]);
-		close(piperw[0]);
-	}
+	run_subprocess(&foot_server, "/usr/bin/foot --server <&-");
+	run_subprocess(&dbus_update_activation_environment, "/usr/bin/dbus-update-activation-environment");
+	run_subprocess(&gentoo_pipewire_launcher, "/usr/bin/gentoo-pipewire-launcher");
+	run_subprocess(&somebar, "/home/mynah/Documents/Programming/somebar/build/somebar");
+
 	printstatus();
 
 	/* At this point the outputs are initialized, choose initial selmon based on
@@ -1868,20 +1872,6 @@ setfullscreen(Client *c, int fullscreen)
 		resize(c, c->prev, 0);
 	}
 	arrange(c->mon);
-	printstatus();
-}
-
-void
-setlayout(const Arg *arg)
-{
-	if (!selmon)
-		return;
-	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-		selmon->sellt ^= 1;
-	if (arg && arg->v)
-		selmon->lt[selmon->sellt] = (Layout *)arg->v;
-	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol));
-	arrange(selmon);
 	printstatus();
 }
 
@@ -2450,38 +2440,6 @@ xytonode(double x, double y, struct wlr_surface **psurface,
 	if (pc) *pc = c;
 	if (pl) *pl = l;
 	return node;
-}
-
-void
-zoom(const Arg *arg)
-{
-	Client *c, *sel = focustop(selmon);
-
-	if (!sel || !selmon || !selmon->lt[selmon->sellt]->arrange || sel->is_floating)
-		return;
-
-	/* Search for the first tiled window that is not sel, marking sel as
-	 * NULL if we pass it along the way */
-	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON(c, selmon) && !c->is_floating) {
-			if (c != sel)
-				break;
-			sel = NULL;
-		}
-
-	/* Return if no other tiled window was found */
-	if (&c->link == &clients)
-		return;
-
-	/* If we passed sel, move c to the front; otherwise, move sel to the
-	 * front */
-	if (!sel)
-		sel = c;
-	wl_list_remove(&sel->link);
-	wl_list_insert(&clients, &sel->link);
-
-	focusclient(sel, 1);
-	arrange(selmon);
 }
 
 int
