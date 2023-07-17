@@ -2,6 +2,7 @@
 #define WM_H
 
 #include <stdint.h>
+#include <unistd.h>
 #include <xkbcommon/xkbcommon.h>
 
 typedef union {
@@ -138,8 +139,28 @@ typedef struct {
 	struct wl_listener destroy;
 } SessionLock;
 
-enum { CurNormal, CurPressed, CurMove, CurResize }; // cursor
-enum { XDGShell, LayerShell }; // client types
-enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrFS, LyrTop, LyrOverlay, LyrBlock, NUM_LAYERS }; // scene layers
+enum {
+	CurNormal,
+	CurPressed,
+	CurMove,
+	CurResize
+}; // cursor
+
+enum { 
+	XDGShell, 
+	LayerShell 
+}; // client types
+
+enum {
+	LyrBg,
+	LyrBottom,
+	LyrTile,
+	LyrFloat,
+	LyrFS,
+	LyrTop,
+	LyrOverlay,
+	LyrBlock,
+	NUM_LAYERS 
+}; // scene layers
 
 #endif // WM_H

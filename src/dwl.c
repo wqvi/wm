@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <time.h>
-#include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>
@@ -170,6 +169,7 @@ static void zoom(const Arg *arg);
 static const char broken[] = "broken";
 static const char *cursor_image = "left_ptr";
 static pid_t child_pid = -1;
+static pid_t subprocesses[4] = { -1 };
 static int locked;
 static void *exclusive_focus;
 static struct wl_display *dpy;
@@ -2501,12 +2501,16 @@ main(int argc, char *argv[])
 	if (optind < argc)
 		goto usage;
 
+	wlr_log_init(WLR_DEBUG, NULL);
 	/* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
 	if (!getenv("XDG_RUNTIME_DIR"))
 		die("XDG_RUNTIME_DIR must be set");
 	setup();
+	wlr_log(WLR_INFO, "setup");
 	run(startup_cmd);
+	wlr_log(WLR_INFO, "ran");
 	cleanup();
+	wlr_log(WLR_INFO, "cleanup");
 	return EXIT_SUCCESS;
 
 usage:
