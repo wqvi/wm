@@ -1199,6 +1199,15 @@ inputdevice(struct wl_listener *listener, void *data)
 	wlr_seat_set_capabilities(seat, caps);
 }
 
+static void spawn_terminal(void) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/footclient", "/usr/bin/footclient");
+		die("dwl: execl /usr/bin/footclient failed:");
+	}
+}
+
 int
 keybinding(uint32_t mods, xkb_keysym_t sym)
 {
@@ -1209,6 +1218,17 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	 */
 	int handled = 0;
 	const Key *k;
+	switch (sym) {
+		case XKB_KEY_Return:
+			if (mods == MODKEY) {
+				spawn_terminal();
+				return 1;
+			}
+			break;
+		default:
+			break;
+	}
+
 	for (k = keys; k < END(keys); k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod) &&
 				sym == k->keysym && k->func) {
