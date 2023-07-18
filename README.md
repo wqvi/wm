@@ -1,3 +1,10 @@
+# wm - a fork of dwl
+
+This is just my custom implementation of dwl that is intended to be specifically for my system.
+I kinda got bored of sway and wanted something really really lightweight for specific gentoo systems I have.
+You are free to just use it if you'd like. There's so many licenses here idk which one to pick.
+Thanks to everyone who worked on wayland, wlroots, swaywm, and dwl for making such a thing possible.
+
 # dwl - dwm for Wayland
 
 Join us on our [Discord server] or at [#dwl] on irc.libera.chat.
