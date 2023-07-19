@@ -88,11 +88,3 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_ALT
-
-static const Button buttons[] = {
-	{ 0, BTN_EXTRA, NULL, {0}}, // exec playerctl next
-	{ 0, BTN_SIDE, NULL, {0}}, // exec playerctl previous
-	{ MODKEY, BTN_SIDE, NULL, {0}}, // exec playerctl play-pause
-	{ WLR_MODIFIER_SHIFT, BTN_EXTRA, NULL, {0}}, // exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%+
-	{ WLR_MODIFIER_SHIFT, BTN_SIDE, NULL, {0}} // exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-
-};

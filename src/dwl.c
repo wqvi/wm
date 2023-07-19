@@ -58,7 +58,6 @@
 /* macros */
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
 #define MIN(A, B)               ((A) < (B) ? (A) : (B))
-#define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define END(A)                  ((A) + LENGTH(A))
@@ -130,7 +129,7 @@ static void quit(const Arg *arg);
 static void rendermon(struct wl_listener *listener, void *data);
 static void requeststartdrag(struct wl_listener *listener, void *data);
 static void resize(Client *c, struct wlr_box geo, int interact);
-static void run(char *startup_cmd);
+static void run(void);
 static void setcursor(struct wl_listener *listener, void *data);
 static void setfullscreen(Client *c, int fullscreen);
 static void setmfact(const Arg *arg);
@@ -391,26 +390,45 @@ axisnotify(struct wl_listener *listener, void *data)
 			event->delta_discrete, event->source);
 }
 
-static void handle_mouse_button(uint32_t mods, unsigned int button) {
-	if (button == BTN_EXTRA) {
-		// exec playerctl next
-	} else if (button == BTN_SIDE) {
-		// exec playerctl previous
+static void spawn_wpctl(const char *percentage) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/wpctl", "/usr/bin/wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", percentage, NULL);
+		die("dwl: execl /usr/bin/playerctl failed:");
 	}
+}
 
+static void spawn_playerctl(const char *operation) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/playerctl", "/usr/bin/playerctl", operation, NULL);
+		die("dwl: execl /usr/bin/playerctl failed:");
+	}
+}
+
+static void handle_mouse_button(uint32_t mods, unsigned int button) {
 	if (mods & MODKEY && button == BTN_SIDE) {
-		// exec playerctl play-pause
+		spawn_playerctl("play-pause");
 		return;
 	}
 
-	if (!(mods & WLR_MODIFIER_SHIFT)) return;
-
-	if (button == BTN_EXTRA) {
-		// exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%+
-	} else if (button == BTN_SIDE) {
-		// exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-
+	if (button == BTN_EXTRA && mods & WLR_MODIFIER_SHIFT) {
+		spawn_wpctl("2%+");
+		return;
+	} else if (button == BTN_SIDE && mods & WLR_MODIFIER_SHIFT) {
+		spawn_wpctl("2%-");
+		return;
 	}
 
+	if (button == BTN_EXTRA) {
+		spawn_playerctl("next");
+		return;
+	} else if (button == BTN_SIDE) {
+		spawn_playerctl("previous");
+		return;
+	}
 }
 
 void buttonpress(struct wl_listener *listener, void *data) {
@@ -418,7 +436,6 @@ void buttonpress(struct wl_listener *listener, void *data) {
 	struct wlr_keyboard *keyboard;
 	uint32_t mods;
 	Client *c;
-	const Button *b;
 
 	IDLE_NOTIFY_ACTIVITY;
 
@@ -436,13 +453,6 @@ void buttonpress(struct wl_listener *listener, void *data) {
 		keyboard = wlr_seat_get_keyboard(seat);
 		mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
 		handle_mouse_button(mods, event->button);
-		//for (b = buttons; b < END(buttons); b++) {
-		//	if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
-		//			event->button == b->button && b->func) {
-		//		b->func(&b->arg);
-		//		return;
-		//	}
-		//}
 		break;
 	case WLR_BUTTON_RELEASED:
 		/* If you released any buttons, we exit interactive move/resize mode. */
@@ -1864,9 +1874,7 @@ static int run_subprocess(pid_t *pid, const char *cmd) {
 	return 0;
 }
 
-void
-run(char *startup_cmd)
-{
+void run(void) {
 	pid_t foot_server = subprocesses[0];
 	pid_t dbus_update_activation_environment = subprocesses[1];
 	pid_t gentoo_pipewire_launcher = subprocesses[2];
@@ -1884,7 +1892,7 @@ run(char *startup_cmd)
 		die("startup: backend_start");
 
 	run_subprocess(&foot_server, "/usr/bin/foot --server <&-");
-	run_subprocess(&dbus_update_activation_environment, "/usr/bin/dbus-update-activation-environment");
+	run_subprocess(&dbus_update_activation_environment, "/usr/bin/dbus-update-activation-environment --all");
 	run_subprocess(&gentoo_pipewire_launcher, "/usr/bin/gentoo-pipewire-launcher");
 	run_subprocess(&somebar, "/home/mynah/Documents/Programming/somebar/build/somebar");
 
@@ -2487,11 +2495,8 @@ int main(int argc, char *argv[]) {
 	if (!getenv("XDG_RUNTIME_DIR"))
 		die("XDG_RUNTIME_DIR must be set");
 	setup();
-	wlr_log(WLR_INFO, "setup");
-	run(NULL);
-	wlr_log(WLR_INFO, "ran");
+	run();
 	cleanup();
-	wlr_log(WLR_INFO, "cleanup");
 	return EXIT_SUCCESS;
 
 usage:
