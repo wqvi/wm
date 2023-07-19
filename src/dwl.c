@@ -1229,12 +1229,42 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	const Key *k;
 	if (!(mods & MODKEY)) return 0;
 
+	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+		view(&(Arg){.ui = 1 << (sym - XKB_KEY_1)});
+		return 1;
+	}
+
 	switch (sym) {
 		case XKB_KEY_d:
 			spawn_bemenu();
 			break;
 		case XKB_KEY_Return:
 			spawn_terminal();
+			return 1;
+		case XKB_KEY_Left:
+		case XKB_KEY_j:
+			focusstack(&(Arg){.i = +1});
+			return 1;
+		case XKB_KEY_Right:
+		case XKB_KEY_k:
+			focusstack(&(Arg){.i = -1});
+			return 1;
+		case XKB_KEY_Up:
+		case XKB_KEY_i:
+			incnmaster(&(Arg){.i = +1});
+			return 1;
+		case XKB_KEY_Down:
+		case XKB_KEY_u:
+			incnmaster(&(Arg){.i = -1});
+			return 1;
+		case XKB_KEY_f:
+			togglefullscreen(NULL);
+			return 1;
+		case XKB_KEY_comma:
+			focusmon(&(Arg){.i = WLR_DIRECTION_LEFT});
+			return 1;
+		case XKB_KEY_period:
+			focusmon(&(Arg){.i = WLR_DIRECTION_RIGHT});
 			return 1;
 		default:
 			break;
@@ -1249,6 +1279,21 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 		case XKB_KEY_Q:
 			killclient(NULL);
 			return 1;
+		case XKB_KEY_Left:
+		case XKB_KEY_h:
+			setmfact(&(Arg){.f = -0.05});
+			return 1;
+		case XKB_KEY_Right:
+		case XKB_KEY_l:
+			setmfact(&(Arg){.f = +0.05});
+			return 1;
+		case XKB_KEY_less:
+			tagmon(&(Arg){.i = WLR_DIRECTION_LEFT});
+			return 1;
+		case XKB_KEY_greater:
+			tagmon(&(Arg){.i = WLR_DIRECTION_RIGHT});
+			return 1;
+
 		default:
 			break;
 	}
