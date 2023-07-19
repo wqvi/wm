@@ -5,3 +5,4 @@ bin/
 *-protocol.h
 .ccls-cache
 .*.swp
+.*.swo
