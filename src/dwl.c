@@ -391,9 +391,29 @@ axisnotify(struct wl_listener *listener, void *data)
 			event->delta_discrete, event->source);
 }
 
-void
-buttonpress(struct wl_listener *listener, void *data)
-{
+static void handle_mouse_button(uint32_t mods, unsigned int button) {
+	if (button == BTN_EXTRA) {
+		// exec playerctl next
+	} else if (button == BTN_SIDE) {
+		// exec playerctl previous
+	}
+
+	if (mods & MODKEY && button == BTN_SIDE) {
+		// exec playerctl play-pause
+		return;
+	}
+
+	if (!(mods & WLR_MODIFIER_SHIFT)) return;
+
+	if (button == BTN_EXTRA) {
+		// exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%+
+	} else if (button == BTN_SIDE) {
+		// exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-
+	}
+
+}
+
+void buttonpress(struct wl_listener *listener, void *data) {
 	struct wlr_pointer_button_event *event = data;
 	struct wlr_keyboard *keyboard;
 	uint32_t mods;
@@ -415,13 +435,14 @@ buttonpress(struct wl_listener *listener, void *data)
 
 		keyboard = wlr_seat_get_keyboard(seat);
 		mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
-		for (b = buttons; b < END(buttons); b++) {
-			if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
-					event->button == b->button && b->func) {
-				b->func(&b->arg);
-				return;
-			}
-		}
+		handle_mouse_button(mods, event->button);
+		//for (b = buttons; b < END(buttons); b++) {
+		//	if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
+		//			event->button == b->button && b->func) {
+		//		b->func(&b->arg);
+		//		return;
+		//	}
+		//}
 		break;
 	case WLR_BUTTON_RELEASED:
 		/* If you released any buttons, we exit interactive move/resize mode. */
