@@ -1203,8 +1203,17 @@ static void spawn_terminal(void) {
 	if (fork() == 0) {
 		dup2(STDERR_FILENO, STDOUT_FILENO);
 		setsid();
-		execl("/usr/bin/footclient", "/usr/bin/footclient");
+		execl("/usr/bin/footclient", "/usr/bin/footclient", NULL);
 		die("dwl: execl /usr/bin/footclient failed:");
+	}
+}
+
+static void spawn_bemenu(void) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/bemenu-run", "/usr/bin/bemenu-run", NULL);
+		die("bemenu-run: execl /usr/bin/bemenu-run failed:");
 	}
 }
 
@@ -1218,13 +1227,28 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	 */
 	int handled = 0;
 	const Key *k;
+	if (!(mods & MODKEY)) return 0;
+
 	switch (sym) {
-		case XKB_KEY_Return:
-			if (mods == MODKEY) {
-				spawn_terminal();
-				return 1;
-			}
+		case XKB_KEY_d:
+			spawn_bemenu();
 			break;
+		case XKB_KEY_Return:
+			spawn_terminal();
+			return 1;
+		default:
+			break;
+	}
+
+	if (!(mods & WLR_MODIFIER_SHIFT)) return 0;
+
+	switch (sym) {
+		case XKB_KEY_E:
+			quit(NULL);
+			return 1;
+		case XKB_KEY_Q:
+			killclient(NULL);
+			return 1;
 		default:
 			break;
 	}
@@ -1232,7 +1256,7 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	for (k = keys; k < END(keys); k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod) &&
 				sym == k->keysym && k->func) {
-			k->func(&k->arg);
+			//k->func(&k->arg);
 			handled = 1;
 		}
 	}
