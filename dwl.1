@@ -1,9 +1,9 @@
-.Dd January 8, 2021
+.Dd July 18, 2023
 .Dt DWL 1
 .Os
 .Sh NAME
 .Nm dwl
-.Nd dwm for Wayland
+.Nd wm - a fork of dwm for Wayland
 .Sh SYNOPSIS
 .Nm
 .Op Fl v
@@ -21,17 +21,6 @@ option,
 .Nm
 writes its name and version to standard error and exits unsuccessfully.
 .Pp
-When given the
-.Fl s
-option,
-.Nm
-starts a shell process running
-.Ar command
-when starting.
-When stopping, it sends
-.Dv SIGTERM
-to the child process and waits for it to exit.
-.Pp
 Users are encouraged to customize
 .Nm
 by editing the sources, in particular
@@ -40,21 +29,17 @@ The default key bindings are as follows:
 .Bl -tag -width 20n -offset indent -compact
 .It Mod-[1-9]
 Show only all windows with a tag.
-.It Mod-Ctrl-[1-9]
-Show all windows with a tag.
 .It Mod-Shift-[1-9]
-Move window to a single tag.
-.It Mod-Ctrl-Shift-[1-9]
-Toggle tag for window.
-.It Mod-p
+Move window to a single tag and show given window.
+.It Mod-d
 Spawn
 .Nm bemenu-run .
-.It Mod-Shift-Return
+.It Mod-Return
 Spawn
 .Nm foot .
 .It Mod-[jk]
 Move focus down/up the stack.
-.It Mod-[id]
+.It Mod-[ui]
 Increase/decrease number of windows in master area.
 .It Mod-[hl]
 Decrease/increase master area.
@@ -62,24 +47,10 @@ Decrease/increase master area.
 Move window on top of stack or switch top of stack with second window.
 .It Mod-Tab
 Show only all windows with previous tag.
-.It Mod-Shift-c
+.It Mod-Shift-Q
 Close window.
-.It Mod-t
-Switch to tabbed layout.
 .It Mod-f
-Switch to floating layout.
-.It Mod-m
-Switch to monocle layout.
-.It Mod-Space
-Switch to previous layout.
-.It Mod-Shift-Space
-Toggle floating state of window.
-.It Mod-e
 Toggle fullscreen state of window.
-.It Mod-0
-Show all windows.
-.It Mod-Shift-0
-Set all tags for window.
 .It Mod-,
 Move focus to previous monitor.
 .It Mod-.
@@ -88,7 +59,7 @@ Move focus to next monitor.
 Move window to previous monitor.
 .It Mod-Shift-.
 Move window to next monitor.
-.It Mod-Shift-q
+.It Mod-Shift-E
 Quit
 .Nm .
 .El
@@ -122,12 +93,6 @@ These are set by
 .It Ev WAYLAND_DISPLAY
 Tell how to connect to
 .Nm .
-.It Ev DISPLAY
-If using
-.Nm Xwayland ,
-tell how to connect to the
-.Nm Xwayland
-server.
 .El
 .Sh EXAMPLES
 Start
@@ -148,4 +113,4 @@ standard input,
 will freeze after a while due to it blocking when writing to the full
 pipe buffer.
 .Sh BUGS
-All of them.
+All of them. Even more now that this is a poorly written fork by some silly college student that is bored with their time

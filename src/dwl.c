@@ -2449,16 +2449,11 @@ xytonode(double x, double y, struct wlr_surface **psurface,
 	return node;
 }
 
-int
-main(int argc, char *argv[])
-{
-	char *startup_cmd = NULL;
+int main(int argc, char *argv[]) {
 	int c;
 
 	while ((c = getopt(argc, argv, "s:hv")) != -1) {
-		if (c == 's')
-			startup_cmd = optarg;
-		else if (c == 'v')
+		if (c == 'v')
 			die("dwl " VERSION);
 		else
 			goto usage;
@@ -2472,7 +2467,7 @@ main(int argc, char *argv[])
 		die("XDG_RUNTIME_DIR must be set");
 	setup();
 	wlr_log(WLR_INFO, "setup");
-	run(startup_cmd);
+	run(NULL);
 	wlr_log(WLR_INFO, "ran");
 	cleanup();
 	wlr_log(WLR_INFO, "cleanup");
