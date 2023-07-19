@@ -117,11 +117,9 @@ static void locksession(struct wl_listener *listener, void *data);
 static void maplayersurfacenotify(struct wl_listener *listener, void *data);
 static void mapnotify(struct wl_listener *listener, void *data);
 static void maximizenotify(struct wl_listener *listener, void *data);
-static void monocle(Monitor *m);
 static void motionabsolute(struct wl_listener *listener, void *data);
 static void motionnotify(uint32_t time);
 static void motionrelative(struct wl_listener *listener, void *data);
-static void moveresize(const Arg *arg);
 static void outputmgrapply(struct wl_listener *listener, void *data);
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
 static void outputmgrtest(struct wl_listener *listener, void *data);
@@ -134,22 +132,17 @@ static void requeststartdrag(struct wl_listener *listener, void *data);
 static void resize(Client *c, struct wlr_box geo, int interact);
 static void run(char *startup_cmd);
 static void setcursor(struct wl_listener *listener, void *data);
-static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
 static void setmfact(const Arg *arg);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
-static void spawn(const Arg *arg);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
-static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
-static void toggletag(const Arg *arg);
-static void toggleview(const Arg *arg);
 static void unlocksession(struct wl_listener *listener, void *data);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
@@ -1217,23 +1210,14 @@ static void spawn_bemenu(void) {
 	}
 }
 
-int
-keybinding(uint32_t mods, xkb_keysym_t sym)
-{
-	/*
-	 * Here we handle compositor keybindings. This is when the compositor is
-	 * processing keys, rather than passing them on to the client for its own
-	 * processing.
-	 */
-	int handled = 0;
-	const Key *k;
+int keybinding(uint32_t mods, xkb_keysym_t sym) {
 	if (!(mods & MODKEY)) return 0;
 
 	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
 		view(&(Arg){.ui = 1 << (sym - XKB_KEY_1)});
 		return 1;
 	}
-
+	
 	switch (sym) {
 		case XKB_KEY_d:
 			spawn_bemenu();
@@ -1257,6 +1241,9 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 		case XKB_KEY_u:
 			incnmaster(&(Arg){.i = -1});
 			return 1;
+		case XKB_KEY_Tab:
+			view(NULL);
+			return 1;
 		case XKB_KEY_f:
 			togglefullscreen(NULL);
 			return 1;
@@ -1271,6 +1258,47 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	}
 
 	if (!(mods & WLR_MODIFIER_SHIFT)) return 0;
+
+	switch (sym) {
+		case XKB_KEY_exclam:
+			tag(&(Arg){.ui = 1 << 0});
+			view(&(Arg){.ui = 1 << 0});
+			return 1;
+		case XKB_KEY_at:	
+			tag(&(Arg){.ui = 1 << 1});
+			view(&(Arg){.ui = 1 << 1});
+			return 1;
+		case XKB_KEY_numbersign:
+			tag(&(Arg){.ui = 1 << 2});
+			view(&(Arg){.ui = 1 << 2});
+			return 1;
+		case XKB_KEY_dollar:	
+			tag(&(Arg){.ui = 1 << 3});
+			view(&(Arg){.ui = 1 << 3});
+			return 1;
+		case XKB_KEY_percent:	
+			tag(&(Arg){.ui = 1 << 4});
+			view(&(Arg){.ui = 1 << 4});
+			return 1;
+		case XKB_KEY_asciicircum:	
+			tag(&(Arg){.ui = 1 << 5});
+			view(&(Arg){.ui = 1 << 5});
+			return 1;
+		case XKB_KEY_ampersand:	
+			tag(&(Arg){.ui = 1 << 6});
+			view(&(Arg){.ui = 1 << 6});
+			return 1;
+		case XKB_KEY_asterisk:
+			tag(&(Arg){.ui = 1 << 7});
+			view(&(Arg){.ui = 1 << 7});
+			return 1;
+		case XKB_KEY_parenleft:
+			tag(&(Arg){.ui = 1 << 8});
+			view(&(Arg){.ui = 1 << 8});
+			return 1;
+		default:
+			break;
+	}
 
 	switch (sym) {
 		case XKB_KEY_E:
@@ -1289,23 +1317,18 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 			return 1;
 		case XKB_KEY_less:
 			tagmon(&(Arg){.i = WLR_DIRECTION_LEFT});
+			focusmon(&(Arg){.i = WLR_DIRECTION_LEFT});
 			return 1;
 		case XKB_KEY_greater:
 			tagmon(&(Arg){.i = WLR_DIRECTION_RIGHT});
+			focusmon(&(Arg){.i = WLR_DIRECTION_RIGHT});
 			return 1;
 
 		default:
 			break;
 	}
 
-	for (k = keys; k < END(keys); k++) {
-		if (CLEANMASK(mods) == CLEANMASK(k->mod) &&
-				sym == k->keysym && k->func) {
-			//k->func(&k->arg);
-			handled = 1;
-		}
-	}
-	return handled;
+	return 0;
 }
 
 void
@@ -1514,24 +1537,6 @@ maximizenotify(struct wl_listener *listener, void *data)
 }
 
 void
-monocle(Monitor *m)
-{
-	Client *c;
-	int n = 0;
-
-	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON(c, m) || c->is_floating || c->is_fullscreen)
-			continue;
-		resize(c, m->w, 0);
-		n++;
-	}
-	if (n)
-		snprintf(m->ltsymbol, LENGTH(m->ltsymbol), "[%d]", n);
-	if ((c = focustop(m)))
-		wlr_scene_node_raise_to_top(&c->scene->node);
-}
-
-void
 motionabsolute(struct wl_listener *listener, void *data)
 {
 	/* This event is forwarded by the cursor when a pointer emits an _absolute_
@@ -1613,35 +1618,6 @@ motionrelative(struct wl_listener *listener, void *data)
 	 * the cursor around without any input. */
 	wlr_cursor_move(cursor, &event->pointer->base, event->delta_x, event->delta_y);
 	motionnotify(event->time_msec);
-}
-
-void
-moveresize(const Arg *arg)
-{
-	if (cursor_mode != CurNormal && cursor_mode != CurPressed)
-		return;
-	xytonode(cursor->x, cursor->y, NULL, &grabc, NULL, NULL, NULL);
-	if (!grabc || client_is_unmanaged(grabc) || grabc->is_fullscreen)
-		return;
-
-	/* Float the window and tell motionnotify to grab it */
-	setfloating(grabc, 1);
-	switch (cursor_mode = arg->ui) {
-	case CurMove:
-		grabcx = cursor->x - grabc->geom.x;
-		grabcy = cursor->y - grabc->geom.y;
-		wlr_xcursor_manager_set_cursor_image(cursor_mgr, (cursor_image = "fleur"), cursor);
-		break;
-	case CurResize:
-		/* Doesn't work for X11 output - the next absolute motion event
-		 * returns the cursor to where it started */
-		wlr_cursor_warp_closest(cursor, NULL,
-				grabc->geom.x + grabc->geom.width,
-				grabc->geom.y + grabc->geom.height);
-		wlr_xcursor_manager_set_cursor_image(cursor_mgr,
-				(cursor_image = "bottom_right_corner"), cursor);
-		break;
-	}
 }
 
 void
@@ -1933,15 +1909,6 @@ setcursor(struct wl_listener *listener, void *data)
 }
 
 void
-setfloating(Client *c, int floating)
-{
-	c->is_floating = floating;
-	wlr_scene_node_reparent(&c->scene->node, layers[c->is_floating ? LyrFloat : LyrTile]);
-	arrange(c->mon);
-	printstatus();
-}
-
-void
 setfullscreen(Client *c, int fullscreen)
 {
 	c->is_fullscreen = fullscreen;
@@ -2193,17 +2160,6 @@ setup(void)
 }
 
 void
-spawn(const Arg *arg)
-{
-	if (fork() == 0) {
-		dup2(STDERR_FILENO, STDOUT_FILENO);
-		setsid();
-		execvp(((char **)arg->v)[0], (char **)arg->v);
-		die("dwl: execvp %s failed:", ((char **)arg->v)[0]);
-	}
-}
-
-void
 startdrag(struct wl_listener *listener, void *data)
 {
 	struct wlr_drag *drag = data;
@@ -2268,49 +2224,11 @@ tile(Monitor *m)
 }
 
 void
-togglefloating(const Arg *arg)
-{
-	Client *sel = focustop(selmon);
-	/* return if fullscreen */
-	if (sel && !sel->is_fullscreen)
-		setfloating(sel, !sel->is_floating);
-}
-
-void
 togglefullscreen(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
 	if (sel)
 		setfullscreen(sel, !sel->is_fullscreen);
-}
-
-void
-toggletag(const Arg *arg)
-{
-	uint32_t newtags;
-	Client *sel = focustop(selmon);
-	if (!sel)
-		return;
-	newtags = sel->tags ^ (arg->ui & TAGMASK);
-	if (newtags) {
-		sel->tags = newtags;
-		focusclient(focustop(selmon), 1);
-		arrange(selmon);
-	}
-	printstatus();
-}
-
-void
-toggleview(const Arg *arg)
-{
-	uint32_t newtagset = selmon ? selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK) : 0;
-
-	if (newtagset) {
-		selmon->tagset[selmon->seltags] = newtagset;
-		focusclient(focustop(selmon), 1);
-		arrange(selmon);
-	}
-	printstatus();
 }
 
 void
