@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <unistd.h>
+#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <xkbcommon/xkbcommon.h>
 
 typedef union {
@@ -162,5 +163,12 @@ enum {
 	LyrBlock,
 	NUM_LAYERS 
 }; // scene layers
+
+struct subprocess {
+	pid_t pid;
+	struct wlr_xdg_activation_token_v1 *token;
+	struct wl_listener token_destroy;
+	struct wl_list link;
+};
 
 #endif // WM_H

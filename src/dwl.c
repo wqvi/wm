@@ -45,7 +45,6 @@
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
-#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -157,7 +156,6 @@ static struct wlr_scene_node *xytonode(double x, double y, struct wlr_surface **
 /* variables */
 static const char broken[] = "broken";
 static const char *cursor_image = "left_ptr";
-static pid_t subprocesses[4] = { -1 };
 static int locked;
 static void *exclusive_focus;
 static struct wl_display *dpy;
@@ -173,6 +171,7 @@ static struct wlr_compositor *compositor;
 
 static struct wlr_xdg_shell *xdg_shell;
 static struct wlr_xdg_activation_v1 *activation;
+static struct wl_list subprocesses;
 static struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
 static struct wl_list clients; /* tiling order */
 static struct wl_list fstack;  /* focus order */
@@ -501,12 +500,6 @@ void
 cleanup(void)
 {
 	wl_display_destroy_clients(dpy);
-	for (int i = 0; i < 4; i++) {
-		if (subprocesses[i] > 0) {
-			kill(subprocesses[i], SIGTERM);
-			waitpid(subprocesses[i], NULL, 0);
-		}
-	}
 	wlr_backend_destroy(backend);
 	wlr_scene_node_destroy(&scene->tree.node);
 	wlr_renderer_destroy(drw);
@@ -1854,32 +1847,85 @@ resize(Client *c, struct wlr_box geo, int interact)
 			c->geom.height - 2 * c->bw);
 }
 
-static int run_subprocess(pid_t *pid, const char *cmd) {
-	int pipefd[2];
-	if (pipe(pipefd) == -1) return -1;
+static void subprocess_destroy(struct subprocess *subprocess) {
+	if (!subprocess) return;
 
-	if ((*pid = fork()) == -1) return -1;
+	wl_list_remove(&subprocess->token_destroy.link);
+	wl_list_remove(&subprocess->link);
+	wlr_xdg_activation_token_v1_destroy(subprocess->token);
+	free(subprocess);
+	wlr_log(WLR_INFO, "Subprocess finished!\n");
+}
 
-	if (*pid == 0) {
-		dup2(pipefd[0], STDIN_FILENO);
-		close(pipefd[0]);
-		close(pipefd[1]);
-		execl("/bin/sh", "bin/sh", "-c", cmd, NULL);
-		die("subprocess finished");
+static void token_destroy(struct wl_listener *listener, void *data) {
+	struct subprocess *subprocess = wl_container_of(listener, subprocess, token_destroy);
+	subprocess->token = NULL;
+	subprocess_destroy(subprocess);
+}
+
+static int run_subprocess(const char *cmd) {
+	pid_t pid;
+	pid_t child;
+	struct wlr_xdg_activation_token_v1 *token;
+	struct subprocess *subprocess;
+	ssize_t s = 0;
+	int fd[2];
+	if (pipe(fd) == -1) return -1;
+
+	token = wlr_xdg_activation_token_v1_create(activation);
+	token->seat = seat;
+	subprocess = malloc(sizeof(struct subprocess));
+	subprocess->token = token;
+	subprocess->token_destroy.notify = token_destroy;
+	wl_list_init(&subprocess->link);
+
+	if ((pid = fork()) == 0) {
+		sigset_t set;
+		setsid();
+		sigemptyset(&set);
+		sigprocmask(SIG_SETMASK, &set, NULL);
+		signal(SIGPIPE, SIG_DFL);
+		close(fd[0]);
+
+		if ((child = fork()) == 0) {
+			const char *xdg_token_name = wlr_xdg_activation_token_v1_get_name(token);
+			setenv("XDG_ACTIVATION_TOKEN", xdg_token_name, 1);
+			close(fd[1]);
+			execlp("sh", "sh", "-c", cmd, NULL);
+			_exit(1);
+		}
+
+		s = 0;
+		while ((size_t)s < sizeof(pid_t)) {
+			s += write(fd[1], ((uint8_t *)&child) + s, sizeof(pid_t) - s);
+		}
+		close(fd[1]);
+		_exit(0);
+	} else if (pid < 0) {
+		close(fd[0]);
+		close(fd[1]);
+		return -1;
 	}
-	dup2(pipefd[1], STDOUT_FILENO);
-	close(pipefd[1]);
-	close(pipefd[0]);
+
+	close(fd[1]);
+	s = 0;
+	while ((size_t)s < sizeof(pid_t)) {
+		s += read(fd[0], ((uint8_t *)&child) + s, sizeof(pid_t) - s);
+	}
+	close(fd[0]);
+
+	waitpid(pid, NULL, 0);
+
+	wl_signal_add(&token->events.destroy, &subprocess->token_destroy);
+
+	wl_list_insert(&subprocesses, &subprocess->link);
+
+	wlr_log(WLR_INFO, "Created subprocess \"%s\"", cmd);
 
 	return 0;
 }
 
 void run(void) {
-	pid_t foot_server = subprocesses[0];
-	pid_t dbus_update_activation_environment = subprocesses[1];
-	pid_t gentoo_pipewire_launcher = subprocesses[2];
-	pid_t somebar = subprocesses[3];
-
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(dpy);
 	if (!socket)
@@ -1891,10 +1937,10 @@ void run(void) {
 	if (!wlr_backend_start(backend))
 		die("startup: backend_start");
 
-	run_subprocess(&foot_server, "/usr/bin/foot --server <&-");
-	run_subprocess(&dbus_update_activation_environment, "/usr/bin/dbus-update-activation-environment --all");
-	run_subprocess(&gentoo_pipewire_launcher, "/usr/bin/gentoo-pipewire-launcher");
-	run_subprocess(&somebar, "/home/mynah/Documents/Programming/somebar/build/somebar");
+	run_subprocess("/usr/bin/foot --server");
+	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
+	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
+	//run_subprocess("/home/mynah/Documents/Programming/somebar/build/somebar");
 
 	printstatus();
 
@@ -2083,6 +2129,8 @@ setup(void)
 	/* Initializes the interface used to implement urgency hints */
 	activation = wlr_xdg_activation_v1_create(dpy);
 	wl_signal_add(&activation->events.request_activate, &request_activate);
+
+	wl_list_init(&subprocesses);
 
 	/* Creates an output layout, which a wlroots utility for working with an
 	 * arrangement of screens in a physical layout. */
