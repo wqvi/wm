@@ -16,7 +16,7 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 all: bin dwl
 
 dwl: bin/dwl.o bin/util.o
-	$(CC) bin/dwl.o bin/util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
+	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
 bin/dwl.o: src/dwl.c config.mk src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
 
