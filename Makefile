@@ -15,12 +15,14 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: bin dwl
 
-dwl: bin/dwl.o bin/util.o
+dwl: bin/dwl.o bin/util.o bin/subprocess.o
 	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
 bin/dwl.o: src/dwl.c config.mk src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
 
 bin/util.o: src/util.c src/util.h
+
+bin/subprocess.o: src/subprocess.c xdg-shell-protocol.h
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up

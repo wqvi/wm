@@ -15,8 +15,6 @@
 #include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
-#include <wlr/types/wlr_compositor.h>
-#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
@@ -1847,84 +1845,6 @@ resize(Client *c, struct wlr_box geo, int interact)
 			c->geom.height - 2 * c->bw);
 }
 
-static void subprocess_destroy(struct subprocess *subprocess) {
-	if (!subprocess) return;
-
-	wl_list_remove(&subprocess->token_destroy.link);
-	wl_list_remove(&subprocess->link);
-	wlr_xdg_activation_token_v1_destroy(subprocess->token);
-	free(subprocess);
-	wlr_log(WLR_INFO, "Subprocess finished!\n");
-}
-
-static void token_destroy(struct wl_listener *listener, void *data) {
-	struct subprocess *subprocess = wl_container_of(listener, subprocess, token_destroy);
-	subprocess->token = NULL;
-	subprocess_destroy(subprocess);
-}
-
-static int run_subprocess(const char *cmd) {
-	pid_t pid;
-	pid_t child;
-	struct wlr_xdg_activation_token_v1 *token;
-	struct subprocess *subprocess;
-	ssize_t s = 0;
-	int fd[2];
-	if (pipe(fd) == -1) return -1;
-
-	token = wlr_xdg_activation_token_v1_create(activation);
-	token->seat = seat;
-	subprocess = malloc(sizeof(struct subprocess));
-	subprocess->token = token;
-	subprocess->token_destroy.notify = token_destroy;
-	wl_list_init(&subprocess->link);
-
-	if ((pid = fork()) == 0) {
-		sigset_t set;
-		setsid();
-		sigemptyset(&set);
-		sigprocmask(SIG_SETMASK, &set, NULL);
-		signal(SIGPIPE, SIG_DFL);
-		close(fd[0]);
-
-		if ((child = fork()) == 0) {
-			const char *xdg_token_name = wlr_xdg_activation_token_v1_get_name(token);
-			setenv("XDG_ACTIVATION_TOKEN", xdg_token_name, 1);
-			close(fd[1]);
-			execlp("sh", "sh", "-c", cmd, NULL);
-			_exit(1);
-		}
-
-		s = 0;
-		while ((size_t)s < sizeof(pid_t)) {
-			s += write(fd[1], ((uint8_t *)&child) + s, sizeof(pid_t) - s);
-		}
-		close(fd[1]);
-		_exit(0);
-	} else if (pid < 0) {
-		close(fd[0]);
-		close(fd[1]);
-		return -1;
-	}
-
-	close(fd[1]);
-	s = 0;
-	while ((size_t)s < sizeof(pid_t)) {
-		s += read(fd[0], ((uint8_t *)&child) + s, sizeof(pid_t) - s);
-	}
-	close(fd[0]);
-
-	waitpid(pid, NULL, 0);
-
-	wl_signal_add(&token->events.destroy, &subprocess->token_destroy);
-
-	wl_list_insert(&subprocesses, &subprocess->link);
-
-	wlr_log(WLR_INFO, "Created subprocess \"%s\"", cmd);
-
-	return 0;
-}
-
 void run(void) {
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(dpy);
@@ -1937,7 +1857,7 @@ void run(void) {
 	if (!wlr_backend_start(backend))
 		die("startup: backend_start");
 
-	run_subprocess("/usr/bin/foot --server");
+	run_subprocess("/usr/bin/foot --server", &subprocesses, activation, seat);
 	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
 	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
 	//run_subprocess("/home/mynah/Documents/Programming/somebar/build/somebar");
