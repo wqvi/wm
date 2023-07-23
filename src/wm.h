@@ -165,13 +165,13 @@ enum {
 	NUM_LAYERS 
 }; // scene layers
 
-struct subprocess {
+struct process {
 	pid_t pid;
 	struct wlr_xdg_activation_token_v1 *token;
 	struct wl_listener token_destroy;
 	struct wl_list link;
 };
 
-int run_subprocess(const char *cmd, struct wl_list *subprocesses, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
+int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
 #endif // WM_H

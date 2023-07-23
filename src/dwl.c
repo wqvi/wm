@@ -169,7 +169,7 @@ static struct wlr_compositor *compositor;
 
 static struct wlr_xdg_shell *xdg_shell;
 static struct wlr_xdg_activation_v1 *activation;
-static struct wl_list subprocesses;
+static struct wl_list processes;
 static struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
 static struct wl_list clients; /* tiling order */
 static struct wl_list fstack;  /* focus order */
@@ -1857,7 +1857,7 @@ void run(void) {
 	if (!wlr_backend_start(backend))
 		die("startup: backend_start");
 
-	run_subprocess("/usr/bin/foot --server", &subprocesses, activation, seat);
+	run_daemon("/usr/bin/foot --server", &processes, activation, seat);
 	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
 	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
 	//run_subprocess("/home/mynah/Documents/Programming/somebar/build/somebar");
@@ -2050,7 +2050,7 @@ setup(void)
 	activation = wlr_xdg_activation_v1_create(dpy);
 	wl_signal_add(&activation->events.request_activate, &request_activate);
 
-	wl_list_init(&subprocesses);
+	wl_list_init(&processes);
 
 	/* Creates an output layout, which a wlroots utility for working with an
 	 * arrangement of screens in a physical layout. */
