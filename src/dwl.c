@@ -1860,7 +1860,7 @@ void run(void) {
 	run_daemon("/usr/bin/foot --server", &processes, activation, seat);
 	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
 	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
-	//run_subprocess("/home/mynah/Documents/Programming/somebar/build/somebar");
+	run_child("/home/mynah/Documents/Programming/somebar/build/somebar", &processes, activation, seat);
 
 	printstatus();
 

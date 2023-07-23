@@ -38,6 +38,8 @@ int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activa
 	process->token = token;
 	process->token_destroy.notify = token_destroy;
 	wl_list_init(&process->link);
+	wl_signal_add(&token->events.destroy, &process->token_destroy);
+	wl_list_insert(processes, &process->link);
 
 	if ((pid = fork()) == 0) {
 		sigset_t set;
@@ -75,16 +77,48 @@ int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activa
 	close(fd[0]);
 
 	waitpid(pid, NULL, 0);
-
-	wl_signal_add(&token->events.destroy, &process->token_destroy);
-
-	wl_list_insert(processes, &process->link);
-
+	
 	wlr_log(WLR_INFO, "Created process \"%s\"", cmd);
 
 	return 0;
 }
 
 int run_child(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat) {
+	pid_t child;
+	struct wlr_xdg_activation_token_v1 *token;
+	struct process *process;
+	int fd[2];
+	if (pipe(fd) == -1) return -1;
+
+	token = wlr_xdg_activation_token_v1_create(activation);
+	token->seat = seat;
+	process = malloc(sizeof(struct process));
+	process->token = token;
+	process->token_destroy.notify = token_destroy;
+	wl_list_init(&process->link);
+	wl_signal_add(&token->events.destroy, &process->token_destroy);
+	wl_list_insert(processes, &process->link);
+
+	if ((child = fork()) == 0) {
+		const char *xdg_token_name = wlr_xdg_activation_token_v1_get_name(token);
+		dup2(fd[0], STDIN_FILENO);
+		close(fd[0]);
+		setenv("XDG_ACTIVATION_TOKEN", xdg_token_name, 1);
+		close(fd[1]);
+		execlp("sh", "sh", "-c", cmd, NULL);
+		wlr_log(WLR_INFO, "I AM THE CHILD %s", cmd);
+		_exit(0);
+	} else if (child < 0) {
+		close(fd[0]);
+		close(fd[1]);
+		return -1;
+	}
+
+	dup2(fd[1], STDOUT_FILENO);
+	close(fd[1]);
+	close(fd[2]);
+	
+	wlr_log(WLR_INFO, "Created child process \"%s\"", cmd);
+
 	return 0;
 }
