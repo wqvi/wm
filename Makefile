@@ -18,11 +18,11 @@ all: bin dwl
 dwl: bin/dwl.o bin/util.o bin/subprocess.o
 	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
-bin/dwl.o: src/dwl.c config.mk src/client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
+bin/dwl.o: src/dwl.c config.mk src/client.h src/xdg-shell-protocol.h src/wlr-layer-shell-unstable-v1-protocol.h
 
 bin/util.o: src/util.c src/util.h
 
-bin/subprocess.o: src/subprocess.c xdg-shell-protocol.h
+bin/subprocess.o: src/subprocess.c src/xdg-shell-protocol.h
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -30,15 +30,13 @@ bin/subprocess.o: src/subprocess.c xdg-shell-protocol.h
 WAYLAND_SCANNER   = `$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner`
 WAYLAND_PROTOCOLS = `$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols`
 
-xdg-shell-protocol.h:
+src/xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
-	mv $@ src/
 
-wlr-layer-shell-unstable-v1-protocol.h:
+src/wlr-layer-shell-unstable-v1-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		protocols/wlr-layer-shell-unstable-v1.xml $@
-	mv $@ src/
 
 bin:
 	mkdir $@/
