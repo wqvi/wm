@@ -258,27 +258,15 @@ applyrules(struct Client *c)
 {
 	/* rule matching */
 	const char *appid, *title;
-	uint32_t i, newtags = 0;
-	const struct Rule *r;
-	struct Monitor *mon = selmon, *m;
+	uint32_t newtags = 0;
+	struct Monitor *mon = selmon;
 
 	c->is_floating = client_is_float_type(c);
 	if (!(appid = client_get_appid(c)))
 		appid = broken;
 	if (!(title = client_get_title(c)))
 		title = broken;
-
-	for (r = rules; r < END(rules); r++) {
-		if ((!r->title || strstr(title, r->title))
-				&& (!r->id || strstr(appid, r->id))) {
-			c->is_floating = r->is_floating;
-			newtags |= r->tags;
-			i = 0;
-			wl_list_for_each(m, &mons, link)
-				if (r->monitor == i++)
-					mon = m;
-		}
-	}
+	
 	wlr_scene_node_reparent(&c->scene->node, layers[c->is_floating ? LyrFloat : LyrTile]);
 	setmon(c, mon, newtags);
 }
@@ -294,10 +282,7 @@ arrange(struct Monitor *m)
 	wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
 			(c = focustop(m)) && c->is_fullscreen);
 
-	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
-
-	if (m->lt[m->sellt]->arrange)
-		m->lt[m->sellt]->arrange(m);
+	tile(m);
 	motionnotify(0);
 	checkidleinhibitor(NULL);
 }
@@ -437,7 +422,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
 
 		/* Change focus if the button was _pressed_ over a client */
 		xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
-		if (c && (!client_is_unmanaged(c) || client_wants_focus(c)))
+		if (c && (client_wants_focus(c)))
 			focusclient(c, 1);
 
 		keyboard = wlr_seat_get_keyboard(seat);
@@ -476,8 +461,8 @@ checkidleinhibitor(struct wlr_surface *exclude)
 	wl_list_for_each(inhibitor, &idle_inhibit_mgr->inhibitors, link) {
 		struct wlr_surface *surface = wlr_surface_get_root_surface(inhibitor->surface);
 		struct wlr_scene_tree *tree = surface->data;
-		if (exclude != surface && (bypass_surface_visibility || (!tree
-				|| wlr_scene_node_coords(&tree->node, &unused_lx, &unused_ly)))) {
+		if (exclude != surface && (!tree
+				|| wlr_scene_node_coords(&tree->node, &unused_lx, &unused_ly))) {
 			inhibited = 1;
 			break;
 		}
@@ -751,7 +736,6 @@ createmon(struct wl_listener *listener, void *data)
 			m->nmaster = r->nmaster;
 			wlr_output_set_scale(wlr_output, r->scale);
 			wlr_xcursor_manager_load(cursor_mgr, r->scale);
-			m->lt[0] = m->lt[1] = r->lt;
 			wlr_output_set_transform(wlr_output, r->rr);
 			m->m.x = r->x;
 			m->m.y = r->y;
@@ -804,7 +788,6 @@ createmon(struct wl_listener *listener, void *data)
 		wlr_output_layout_add_auto(output_layout, wlr_output);
 	else
 		wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
-	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
 }
 
 void
@@ -1039,7 +1022,7 @@ focusclient(struct Client *c, int lift)
 	}
 
 	/* Put the new client atop the focus stack and select its monitor */
-	if (c && !client_is_unmanaged(c)) {
+	if (c) {
 		wl_list_remove(&c->flink);
 		wl_list_insert(&fstack, &c->flink);
 		selmon = c->mon;
@@ -1066,7 +1049,7 @@ focusclient(struct Client *c, int lift)
 			return;
 		/* Don't deactivate old client if the new one wants focus, as this causes issues with winecfg
 		 * and probably other clients */
-		} else if (old_c && !client_is_unmanaged(old_c) && (!c || !client_wants_focus(c))) {
+		} else if (old_c && (!c || !client_wants_focus(c))) {
 			for (i = 0; i < 4; i++)
 				wlr_scene_rect_set_color(old_c->border[i], bordercolor);
 
@@ -1461,8 +1444,7 @@ void
 mapnotify(struct wl_listener *listener, void *data)
 {
 	/* Called when the surface is mapped, or ready to display on-screen. */
-	struct Client *p, *w, *c = wl_container_of(listener, c, map);
-	struct Monitor *m;
+	struct Client *p, *c = wl_container_of(listener, c, map);
 	int i;
 
 	/* Create scene tree for this client and its border */
@@ -1478,20 +1460,6 @@ mapnotify(struct wl_listener *listener, void *data)
 		LISTEN(&client_surface(c)->events.commit, &c->commit, commitnotify);
 	}
 	c->scene->node.data = c->scene_surface->node.data = c;
-
-	/* Handle unmanaged clients first so we can return prior create borders */
-	if (client_is_unmanaged(c)) {
-		client_get_geometry(c, &c->geom);
-		/* Unmanaged clients always are floating */
-		wlr_scene_node_reparent(&c->scene->node, layers[LyrFloat]);
-		wlr_scene_node_set_position(&c->scene->node, c->geom.x + borderpx,
-			c->geom.y + borderpx);
-		if (client_wants_focus(c)) {
-			focusclient(c, 1);
-			exclusive_focus = c;
-		}
-		goto unset_fullscreen;
-	}
 
 	for (i = 0; i < 4; i++) {
 		c->border[i] = wlr_scene_rect_create(c->scene, 0, 0, bordercolor);
@@ -1521,12 +1489,6 @@ mapnotify(struct wl_listener *listener, void *data)
 		applyrules(c);
 	}
 	printstatus();
-
-unset_fullscreen:
-	m = c->mon ? c->mon : xytomon(c->geom.x, c->geom.y);
-	wl_list_for_each(w, &clients, link)
-		if (w != c && w->is_fullscreen && m == w->mon && (w->tags & c->tags))
-			setfullscreen(w, 0);
 }
 
 void
@@ -1569,8 +1531,7 @@ motionnotify(uint32_t time)
 		IDLE_NOTIFY_ACTIVITY;
 
 		/* Update selmon (even while dragging a window) */
-		if (sloppyfocus)
-			selmon = xytomon(cursor->x, cursor->y);
+		selmon = xytomon(cursor->x, cursor->y);
 	}
 
 	/* Update drag icon's position */
@@ -1701,7 +1662,7 @@ pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, double sy
 	struct timespec now;
 	int internal_call = !time;
 
-	if (sloppyfocus && !internal_call && c && !client_is_unmanaged(c))
+	if (!internal_call && c)
 		focusclient(c, 0);
 
 	/* If surface is NULL, clear pointer focus */
@@ -1758,7 +1719,7 @@ printstatus(void)
 		printf("%s selmon %u\n", m->wlr_output->name, m == selmon);
 		printf("%s tags %u %u %u %u\n", m->wlr_output->name, occ, m->tagset[m->seltags],
 				sel, urg);
-		printf("%s layout %s\n", m->wlr_output->name, m->ltsymbol);
+		printf("%s layout []=\n", m->wlr_output->name);
 	}
 	fflush(stdout);
 }
@@ -1902,7 +1863,7 @@ setmfact(const union Arg *arg)
 {
 	float f;
 
-	if (!arg || !selmon || !selmon->lt[selmon->sellt]->arrange)
+	if (!arg || !selmon)
 		return;
 	f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
 	if (f < 0.1 || f > 0.9)
@@ -2218,17 +2179,10 @@ unmapnotify(struct wl_listener *listener, void *data)
 		grabc = NULL;
 	}
 
-	if (client_is_unmanaged(c)) {
-		if (c == exclusive_focus)
-			exclusive_focus = NULL;
-		if (client_surface(c) == seat->keyboard_state.focused_surface)
-			focusclient(focustop(selmon), 1);
-	} else {
-		wl_list_remove(&c->link);
-		setmon(c, NULL, 0);
-		wl_list_remove(&c->flink);
-	}
-
+	wl_list_remove(&c->link);
+	setmon(c, NULL, 0);
+	wl_list_remove(&c->flink);
+	
 	wl_list_remove(&c->commit.link);
 	wlr_scene_node_destroy(&c->scene->node);
 	printstatus();

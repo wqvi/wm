@@ -183,12 +183,6 @@ client_is_stopped(struct Client *c)
 	return 0;
 }
 
-static inline int
-client_is_unmanaged(struct Client *c)
-{
-	return 0;
-}
-
 static inline void
 client_notify_enter(struct wlr_surface *s, struct wlr_keyboard *kb)
 {
