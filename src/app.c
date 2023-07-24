@@ -1,7 +1,6 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/wait.h>
-#include "util.h"
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
@@ -214,52 +213,52 @@ void setup(struct server *server) {
 	wlr_scene_set_presentation(server->scene, wlr_presentation_create(server->display, server->backend));
 }
 
-void run(void) {
+void run(struct server *server) {
 	/* Add a Unix socket to the Wayland display. */
-	/*const char *socket = wl_display_add_socket_auto(dpy);
+	const char *socket = wl_display_add_socket_auto(server->display);
 	if (!socket)
 		die("startup: display_add_socket_auto");
-	setenv("WAYLAND_DISPLAY", socket, 1);*/
+	setenv("WAYLAND_DISPLAY", socket, 1);
 
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
-	/*if (!wlr_backend_start(backend))
+	if (!wlr_backend_start(server->backend))
 		die("startup: backend_start");
 
-	run_daemon("/usr/bin/foot --server", &processes, activation, seat);
+	run_daemon("/usr/bin/foot --server", &server->processes, server->activation, server->seat);
 	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
 	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
-	run_child("/home/mynah/Documents/Programming/somebar/build/somebar", &processes, activation, seat);
+	run_child("/home/mynah/Documents/Programming/somebar/build/somebar", &server->processes, server->activation, server->seat);
 
-	printstatus();*/
+	//printstatus();
 
 	/* At this point the outputs are initialized, choose initial selmon based on
 	 * cursor position, and set default cursor image */
-	//selmon = xytomon(cursor->x, cursor->y);
+	server->selmon = xytomon(server->output_layout, server->cursor->x, server->cursor->y);
 
 	/* TODO hack to get cursor to display in its initial location (100, 100)
 	 * instead of (0, 0) and then jumping. still may not be fully
 	 * initialized, as the image/coordinates are not transformed for the
 	 * monitor when displayed here */
-	//wlr_cursor_warp_closest(cursor, NULL, cursor->x, cursor->y);
-	//wlr_xcursor_manager_set_cursor_image(cursor_mgr, cursor_image, cursor);
+	wlr_cursor_warp_closest(server->cursor, NULL, server->cursor->x, server->cursor->y);
+	wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, "left_ptr", server->cursor);
 
 	/* Run the Wayland event loop. This does not return until you exit the
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
-	//wl_display_run(dpy);
+	wl_display_run(server->display);
 }
 
-void cleanup(void) {
-	/*wl_display_destroy_clients(dpy);
-	wlr_backend_destroy(backend);
-	wlr_scene_node_destroy(&scene->tree.node);
-	wlr_renderer_destroy(drw);
-	wlr_allocator_destroy(alloc);
-	wlr_xcursor_manager_destroy(cursor_mgr);
-	wlr_cursor_destroy(cursor);
-	wlr_output_layout_destroy(output_layout);
-	wlr_seat_destroy(seat);
-	wl_display_destroy(dpy);*/
+void cleanup(struct server *server) {
+	wl_display_destroy_clients(server->display);
+	wlr_backend_destroy(server->backend);
+	wlr_scene_node_destroy(&server->scene->tree.node);
+	wlr_renderer_destroy(server->renderer);
+	wlr_allocator_destroy(server->allocator);
+	wlr_xcursor_manager_destroy(server->cursor_mgr);
+	wlr_cursor_destroy(server->cursor);
+	wlr_output_layout_destroy(server->output_layout);
+	wlr_seat_destroy(server->seat);
+	wl_display_destroy(server->display);
 }

@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include "util.h"
 #include <wlr/util/log.h>
 #include "wm.h"
 
@@ -23,8 +22,8 @@ int main(int argc, char *argv[]) {
 		die("XDG_RUNTIME_DIR must be set");
 
 	setup(&server);
-	run();
-	cleanup();
+	run(&server);
+	cleanup(&server);
 	return EXIT_SUCCESS;
 
 usage:

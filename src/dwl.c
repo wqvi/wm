@@ -50,8 +50,6 @@
 
 #include "wm.h"
 
-#include "util.h"
-
 /* macros */
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
 #define MIN(A, B)               ((A) < (B) ? (A) : (B))
@@ -139,7 +137,6 @@ static void updatetitle(struct wl_listener *listener, void *data);
 static void urgent(struct wl_listener *listener, void *data);
 static void view(const union Arg *arg);
 static void virtualkeyboard(struct wl_listener *listener, void *data);
-static struct Monitor *xytomon(double x, double y);
 static struct wlr_scene_node *xytonode(double x, double y, struct wlr_surface **psurface,
 		struct Client **pc, struct LayerSurface **pl, double *nx, double *ny);
 
@@ -2077,13 +2074,6 @@ virtualkeyboard(struct wl_listener *listener, void *data)
 {
 	struct wlr_virtual_keyboard_v1 *keyboard = data;
 	createkeyboard(&keyboard->keyboard);
-}
-
-struct Monitor *
-xytomon(double x, double y)
-{
-	struct wlr_output *o = wlr_output_layout_output_at(output_layout, x, y);
-	return o ? o->data : NULL;
 }
 
 struct wlr_scene_node *

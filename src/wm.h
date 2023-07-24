@@ -157,6 +157,7 @@ struct server {
 	struct wlr_compositor *compositor;
 	struct wlr_box sgeom;
 	struct wlr_seat *seat;
+	struct Monitor *selmon;
 	
 	struct wlr_idle *idle;
 	struct wlr_idle_notifier_v1 *idle_notifier;
@@ -215,10 +216,16 @@ int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activa
 
 int run_child(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
+struct Monitor *xytomon(struct wlr_output_layout *output_layout, double x, double y);
+
+void die(const char *fmt, ...);
+
+void *ecalloc(size_t nmemb, size_t size);
+
 void setup(struct server *server);
 
-void run(void);
+void run(struct server *server);
 
-void cleanup(void);
+void cleanup(struct server *server);
 
 #endif // WM_H
