@@ -6,6 +6,7 @@
 
 int main(int argc, char *argv[]) {
 	int c;
+	struct server server;
 
 	while ((c = getopt(argc, argv, "s:hv")) != -1) {
 		if (c == 'v')
@@ -20,7 +21,8 @@ int main(int argc, char *argv[]) {
 	/* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
 	if (!getenv("XDG_RUNTIME_DIR"))
 		die("XDG_RUNTIME_DIR must be set");
-	setup();
+
+	setup(&server);
 	run();
 	cleanup();
 	return EXIT_SUCCESS;

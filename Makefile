@@ -15,10 +15,12 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: bin dwl
 
-dwl: bin/main.o bin/dwl.o bin/util.o bin/subprocess.o
+dwl: bin/main.o bin/app.o bin/dwl.o bin/util.o bin/subprocess.o
 	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
-bin/main.o: src/main.c 
+bin/main.o: src/main.c config.mk
+
+bin/app.o: src/app.c config.mk src/xdg-shell-protocol.h src/wlr-layer-shell-unstable-v1-protocol.h
 
 bin/dwl.o: src/dwl.c config.mk src/client.h src/xdg-shell-protocol.h src/wlr-layer-shell-unstable-v1-protocol.h
 

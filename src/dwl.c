@@ -99,7 +99,6 @@ static void focusmon(const union Arg *arg);
 static void focusstack(const union Arg *arg);
 static struct Client *focustop(struct Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
-static void handlesig(int signo);
 static void incnmaster(const union Arg *arg);
 static void inputdevice(struct wl_listener *listener, void *data);
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
@@ -120,7 +119,6 @@ static void outputmgrtest(struct wl_listener *listener, void *data);
 static void pointerfocus(struct Client *c, struct wlr_surface *surface,
 		double sx, double sy, uint32_t time);
 static void printstatus(void);
-static void quit(const union Arg *arg);
 static void rendermon(struct wl_listener *listener, void *data);
 static void resize(struct Client *c, struct wlr_box geo, int interact);
 static void setcursor(struct wl_listener *listener, void *data);
@@ -467,21 +465,6 @@ checkidleinhibitor(struct wlr_surface *exclude)
 
 	wlr_idle_set_enabled(idle, NULL, !inhibited);
 	wlr_idle_notifier_v1_set_inhibited(idle_notifier, inhibited);
-}
-
-void
-cleanup(void)
-{
-	wl_display_destroy_clients(dpy);
-	wlr_backend_destroy(backend);
-	wlr_scene_node_destroy(&scene->tree.node);
-	wlr_renderer_destroy(drw);
-	wlr_allocator_destroy(alloc);
-	wlr_xcursor_manager_destroy(cursor_mgr);
-	wlr_cursor_destroy(cursor);
-	wlr_output_layout_destroy(output_layout);
-	wlr_seat_destroy(seat);
-	wl_display_destroy(dpy);
 }
 
 void
@@ -1129,16 +1112,6 @@ fullscreennotify(struct wl_listener *listener, void *data)
 }
 
 void
-handlesig(int signo)
-{
-	if (signo == SIGCHLD) {
-		while (waitpid(-1, NULL, WNOHANG) > 0);
-	} else if (signo == SIGINT || signo == SIGTERM) {
-		quit(NULL);
-	}
-}
-
-void
 incnmaster(const union Arg *arg)
 {
 	if (!arg || !selmon)
@@ -1287,7 +1260,7 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 
 	switch (sym) {
 		case XKB_KEY_E:
-			quit(NULL);
+			wl_display_terminate(dpy);
 			return 1;
 		case XKB_KEY_Q:
 			killclient(NULL);
@@ -1722,12 +1695,6 @@ printstatus(void)
 }
 
 void
-quit(const union Arg *arg)
-{
-	wl_display_terminate(dpy);
-}
-
-void
 rendermon(struct wl_listener *listener, void *data)
 {
 	/* This function is called every time an output is ready to display a frame,
@@ -1771,43 +1738,6 @@ resize(struct Client *c, struct wlr_box geo, int interact)
 	/* this is a no-op if size hasn't changed */
 	c->resize = client_set_size(c, c->geom.width - 2 * c->bw,
 			c->geom.height - 2 * c->bw);
-}
-
-void run(void) {
-	/* Add a Unix socket to the Wayland display. */
-	const char *socket = wl_display_add_socket_auto(dpy);
-	if (!socket)
-		die("startup: display_add_socket_auto");
-	setenv("WAYLAND_DISPLAY", socket, 1);
-
-	/* Start the backend. This will enumerate outputs and inputs, become the DRM
-	 * master, etc */
-	if (!wlr_backend_start(backend))
-		die("startup: backend_start");
-
-	run_daemon("/usr/bin/foot --server", &processes, activation, seat);
-	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
-	//run_subprocess("/usr/bin/gentoo-pipewire-launcher");
-	run_child("/home/mynah/Documents/Programming/somebar/build/somebar", &processes, activation, seat);
-
-	printstatus();
-
-	/* At this point the outputs are initialized, choose initial selmon based on
-	 * cursor position, and set default cursor image */
-	selmon = xytomon(cursor->x, cursor->y);
-
-	/* TODO hack to get cursor to display in its initial location (100, 100)
-	 * instead of (0, 0) and then jumping. still may not be fully
-	 * initialized, as the image/coordinates are not transformed for the
-	 * monitor when displayed here */
-	wlr_cursor_warp_closest(cursor, NULL, cursor->x, cursor->y);
-	wlr_xcursor_manager_set_cursor_image(cursor_mgr, cursor_image, cursor);
-
-	/* Run the Wayland event loop. This does not return until you exit the
-	 * compositor. Starting the backend rigged up all of the necessary event
-	 * loop configuration to listen to libinput events, DRM events, generate
-	 * frame events at the refresh rate, and so on. */
-	wl_display_run(dpy);
 }
 
 void
@@ -1914,170 +1844,6 @@ setsel(struct wl_listener *listener, void *data)
 	 */
 	struct wlr_seat_request_set_selection_event *event = data;
 	wlr_seat_set_selection(seat, event->source, event->serial);
-}
-
-void
-setup(void)
-{
-	int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
-	struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
-	sigemptyset(&sa.sa_mask);
-
-	for (i = 0; i < LENGTH(sig); i++)
-		sigaction(sig[i], &sa, NULL);
-
-	/* The Wayland display is managed by libwayland. It handles accepting
-	 * clients from the Unix socket, manging Wayland globals, and so on. */
-	dpy = wl_display_create();
-
-	/* The backend is a wlroots feature which abstracts the underlying input and
-	 * output hardware. The autocreate option will choose the most suitable
-	 * backend based on the current environment, such as opening an X11 window
-	 * if an X11 server is running. The NULL argument here optionally allows you
-	 * to pass in a custom renderer if wlr_renderer doesn't meet your needs. The
-	 * backend uses the renderer, for example, to fall back to software cursors
-	 * if the backend does not support hardware cursors (some older GPUs
-	 * don't). */
-	if (!(backend = wlr_backend_autocreate(dpy)))
-		die("couldn't create backend");
-
-	/* Initialize the scene graph used to lay out windows */
-	scene = wlr_scene_create();
-	for (i = 0; i < NUM_LAYERS; i++)
-		layers[i] = wlr_scene_tree_create(&scene->tree);
-
-	/* Create a renderer with the default implementation */
-	if (!(drw = wlr_renderer_autocreate(backend)))
-		die("couldn't create renderer");
-	wlr_renderer_init_wl_display(drw, dpy);
-
-	/* Create a default allocator */
-	if (!(alloc = wlr_allocator_autocreate(backend, drw)))
-		die("couldn't create allocator");
-
-	/* This creates some hands-off wlroots interfaces. The compositor is
-	 * necessary for clients to allocate surfaces and the data device manager
-	 * handles the clipboard. Each of these wlroots interfaces has room for you
-	 * to dig your fingers in and play with their behavior if you want. Note that
-	 * the clients cannot set the selection directly without compositor approval,
-	 * see the setsel() function. */
-	compositor = wlr_compositor_create(dpy, drw);
-	wlr_export_dmabuf_manager_v1_create(dpy);
-	wlr_screencopy_manager_v1_create(dpy);
-	wlr_data_control_manager_v1_create(dpy);
-	wlr_data_device_manager_create(dpy);
-	wlr_gamma_control_manager_v1_create(dpy);
-	wlr_primary_selection_v1_device_manager_create(dpy);
-	wlr_viewporter_create(dpy);
-	wlr_single_pixel_buffer_manager_v1_create(dpy);
-	wlr_subcompositor_create(dpy);
-
-	/* Initializes the interface used to implement urgency hints */
-	activation = wlr_xdg_activation_v1_create(dpy);
-	wl_signal_add(&activation->events.request_activate, &request_activate);
-
-	wl_list_init(&processes);
-
-	/* Creates an output layout, which a wlroots utility for working with an
-	 * arrangement of screens in a physical layout. */
-	output_layout = wlr_output_layout_create();
-	wl_signal_add(&output_layout->events.change, &layout_change);
-	wlr_xdg_output_manager_v1_create(dpy, output_layout);
-
-	/* Configure a listener to be notified when new outputs are available on the
-	 * backend. */
-	wl_list_init(&mons);
-	wl_signal_add(&backend->events.new_output, &new_output);
-
-	/* Set up our client lists and the xdg-shell. The xdg-shell is a
-	 * Wayland protocol which is used for application windows. For more
-	 * detail on shells, refer to the article:
-	 *
-	 * https://drewdevault.com/2018/07/29/Wayland-shells.html
-	 */
-	wl_list_init(&clients);
-	wl_list_init(&fstack);
-
-	idle = wlr_idle_create(dpy);
-	idle_notifier = wlr_idle_notifier_v1_create(dpy);
-
-	idle_inhibit_mgr = wlr_idle_inhibit_v1_create(dpy);
-	wl_signal_add(&idle_inhibit_mgr->events.new_inhibitor, &idle_inhibitor_create);
-
-	layer_shell = wlr_layer_shell_v1_create(dpy);
-	wl_signal_add(&layer_shell->events.new_surface, &new_layer_shell_surface);
-
-	xdg_shell = wlr_xdg_shell_create(dpy, 4);
-	wl_signal_add(&xdg_shell->events.new_surface, &new_xdg_surface);
-
-	input_inhibit_mgr = wlr_input_inhibit_manager_create(dpy);
-	session_lock_mgr = wlr_session_lock_manager_v1_create(dpy);
-	wl_signal_add(&session_lock_mgr->events.new_lock, &session_lock_create_lock);
-	wl_signal_add(&session_lock_mgr->events.destroy, &session_lock_mgr_destroy);
-	locked_bg = wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height,
-			(float [4]){0.1, 0.1, 0.1, 1.0});
-	wlr_scene_node_set_enabled(&locked_bg->node, 0);
-
-	/* Use decoration protocols to negotiate server-side decorations */
-	wlr_server_decoration_manager_set_default_mode(
-			wlr_server_decoration_manager_create(dpy),
-			WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
-	xdg_decoration_mgr = wlr_xdg_decoration_manager_v1_create(dpy);
-	wl_signal_add(&xdg_decoration_mgr->events.new_toplevel_decoration, &new_xdg_decoration);
-
-	/*
-	 * Creates a cursor, which is a wlroots utility for tracking the cursor
-	 * image shown on screen.
-	 */
-	cursor = wlr_cursor_create();
-	wlr_cursor_attach_output_layout(cursor, output_layout);
-
-	/* Creates an xcursor manager, another wlroots utility which loads up
-	 * Xcursor themes to source cursor images from and makes sure that cursor
-	 * images are available at all scale factors on the screen (necessary for
-	 * HiDPI support). Scaled cursors will be loaded with each output. */
-	cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
-	setenv("XCURSOR_SIZE", "24", 1);
-
-	/*
-	 * wlr_cursor *only* displays an image on screen. It does not move around
-	 * when the pointer moves. However, we can attach input devices to it, and
-	 * it will generate aggregate events for all of them. In these events, we
-	 * can choose how we want to process them, forwarding them to clients and
-	 * moving the cursor around. More detail on this process is described in my
-	 * input handling blog post:
-	 *
-	 * https://drewdevault.com/2018/07/17/Input-handling-in-wlroots.html
-	 *
-	 * And more comments are sprinkled throughout the notify functions above.
-	 */
-	wl_signal_add(&cursor->events.motion, &cursor_motion);
-	wl_signal_add(&cursor->events.motion_absolute, &cursor_motion_absolute);
-	wl_signal_add(&cursor->events.button, &cursor_button);
-	wl_signal_add(&cursor->events.axis, &cursor_axis);
-	wl_signal_add(&cursor->events.frame, &cursor_frame);
-
-	/*
-	 * Configures a seat, which is a single "seat" at which a user sits and
-	 * operates the computer. This conceptually includes up to one keyboard,
-	 * pointer, touch, and drawing tablet device. We also rig up a listener to
-	 * let us know when new input devices are available on the backend.
-	 */
-	wl_list_init(&keyboards);
-	wl_signal_add(&backend->events.new_input, &new_input);
-	virtual_keyboard_mgr = wlr_virtual_keyboard_manager_v1_create(dpy);
-	wl_signal_add(&virtual_keyboard_mgr->events.new_virtual_keyboard,
-			&new_virtual_keyboard);
-	seat = wlr_seat_create(dpy, "seat0");
-	wl_signal_add(&seat->events.request_set_cursor, &request_cursor);
-	wl_signal_add(&seat->events.request_set_selection, &request_set_sel);
-	wl_signal_add(&seat->events.request_set_primary_selection, &request_set_psel);
-
-	output_mgr = wlr_output_manager_v1_create(dpy);
-	wl_signal_add(&output_mgr->events.apply, &output_mgr_apply);
-	wl_signal_add(&output_mgr->events.test, &output_mgr_test);
-
-	wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));
 }
 
 void

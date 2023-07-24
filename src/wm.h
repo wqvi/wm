@@ -147,13 +147,77 @@ struct process {
 	struct wl_list link;
 };
 
+struct server {
+	struct wl_display *display;
+	struct wlr_backend *backend;
+	struct wlr_scene *scene;
+	struct wlr_scene_tree *layers[NUM_LAYERS];
+	struct wlr_renderer *renderer;
+	struct wlr_allocator *allocator;
+	struct wlr_compositor *compositor;
+	struct wlr_box sgeom;
+	struct wlr_seat *seat;
+	
+	struct wlr_idle *idle;
+	struct wlr_idle_notifier_v1 *idle_notifier;
+	struct wlr_idle_inhibit_manager_v1 *idle_inhibit_mgr;
+	struct wlr_input_inhibit_manager *input_inhibit_mgr;
+	struct wlr_session_lock_manager_v1 *session_lock_mgr;
+	struct wlr_scene_rect *locked_bg;
+	struct wlr_session_lock_v1 *cur_lock;
+
+	struct wlr_xdg_shell *xdg_shell;
+	struct wlr_xdg_activation_v1 *activation;
+	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
+
+	struct wlr_output_layout *output_layout;
+	struct wlr_layer_shell_v1 *layer_shell;
+
+	struct wlr_output_manager_v1 *output_mgr;
+
+	struct wlr_cursor *cursor;
+	struct wlr_xcursor_manager *cursor_mgr;	
+	
+	struct wl_list keyboards;
+	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
+	
+	struct wl_listener request_activate;
+	struct wl_listener layout_change;
+	struct wl_listener new_output;
+	struct wl_listener idle_inhibitor_create;
+	struct wl_listener new_layer_shell_surface;
+	struct wl_listener new_xdg_surface;
+	struct wl_listener new_xdg_decoration;
+	struct wl_listener session_lock_create_lock;
+	struct wl_listener session_lock_mgr_destroy;
+	struct wl_listener request_cursor;
+	struct wl_listener request_set_psel;
+	struct wl_listener request_set_sel;
+	struct wl_listener output_mgr_apply;
+	struct wl_listener output_mgr_test;
+
+	struct wl_listener cursor_axis; 
+	struct wl_listener cursor_button;
+	struct wl_listener cursor_frame;
+	struct wl_listener cursor_motion;
+	struct wl_listener cursor_motion_absolute;
+	
+	struct wl_listener new_input;
+	struct wl_listener new_virtual_keyboard;
+
+	struct wl_list processes;
+	struct wl_list monitors;
+	struct wl_list clients;
+	struct wl_list focus_stack;
+};
+
 int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
 int run_child(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
-void run(void);
+void setup(struct server *server);
 
-void setup(void);
+void run(void);
 
 void cleanup(void);
 
