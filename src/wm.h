@@ -7,33 +7,17 @@
 #include <wlr/util/box.h>
 #include <xkbcommon/xkbcommon.h>
 
-typedef union {
+union Arg {
 	int i;
 	uint32_t ui;
 	float f;
 	const void *v;
-} Arg;
+};
 
-typedef struct {
-	unsigned int mod;
-	unsigned int button;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Button;
-
-typedef struct {
-	uint32_t mod;
-	xkb_keysym_t keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Key;
-
-typedef struct Monitor Monitor;
-
-typedef struct {
+struct Client {
 	unsigned int type; // Never X11
 	struct wlr_box geom; // layout-relative, includes border
-	Monitor *mon;
+	struct Monitor *mon;
 	struct wlr_scene_tree *scene;
 	struct wlr_scene_rect *border[4]; // top, bottom, left, right
 	struct wlr_scene_tree *scene_surface;
@@ -54,9 +38,9 @@ typedef struct {
 	int is_urgent;
 	int is_fullscreen;
 	uint32_t resize; // configure serial of a pending size
-} Client;
+};
 
-typedef struct {
+struct Keyboard {
 	struct wl_list link;
 	struct wlr_keyboard *wlr_keyboard;
 
@@ -68,13 +52,13 @@ typedef struct {
 	struct wl_listener modifiers;
 	struct wl_listener key;
 	struct wl_listener destroy;
-} Keyboard;
+};
 
-typedef struct {
+struct LayerSurface {
 	// Must keep these three elements in this order
 	unsigned int type; // layer shell
 	struct wlr_box geom;
-	Monitor *mon;
+	struct Monitor *mon;
 	struct wlr_scene_tree *scene;
 	struct wlr_scene_tree *popups;
 	struct wlr_scene_layer_surface_v1 *scene_layer;
@@ -86,12 +70,12 @@ typedef struct {
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener surface_commit;
-} LayerSurface;
+};
 
-typedef struct {
+struct Layout {
 	const char *symbol;
-	void (*arrange)(Monitor *);
-} Layout;
+	void (*arrange)(struct Monitor *);
+};
 
 struct Monitor {
 	struct wl_list link;
@@ -105,7 +89,7 @@ struct Monitor {
 	struct wlr_box m; // monitor area, layout-relative
 	struct wlr_box w; // window area, layout-relative
 	struct wl_list layers[4]; // LayerSurface::link
-	const Layout *lt[2];
+	const struct Layout *lt[2];
 	unsigned int seltags;
 	unsigned int sellt;
 	uint32_t tagset[2];
@@ -114,32 +98,32 @@ struct Monitor {
 	char ltsymbol[16];
 };
 
-typedef struct {
+struct MonitorRule {
 	const char *name;
 	float mfact;
 	int nmaster;
 	float scale;
-	const Layout *lt;
+	const struct Layout *lt;
 	enum wl_output_transform rr;
 	int x, y;
-} MonitorRule;
+};
 
-typedef struct {
+struct Rule {
 	const char *id;
 	const char *title;
 	uint32_t tags;
 	int is_floating;
 	int monitor;
-} Rule;
+};
 
-typedef struct {
+struct SessionLock {
 	struct wlr_scene_tree *scene;
 
 	struct wlr_session_lock_v1 *lock;
 	struct wl_listener new_surface;
 	struct wl_listener unlock;
 	struct wl_listener destroy;
-} SessionLock;
+};
 
 enum {
 	CurNormal,

@@ -10,7 +10,7 @@ static const float fullscreen_bg[]         = {0.1, 0.1, 0.1, 1.0};
 /* tagging - tagcount must be no greater than 31 */
 static const int tagcount = 9;
 
-static const Rule rules[0] = {
+static const struct Rule rules[0] = {
 	/* app_id     title       tags mask     isfloating   monitor */
 	/* examples:
 	{ "Gimp",     NULL,       0,            1,           -1 },
@@ -18,12 +18,12 @@ static const Rule rules[0] = {
 	//{ "firefox",  NULL,       1 << 8,       0,           -1 },
 };
 
-static const Layout layouts[] = {
+static const struct Layout layouts[] = {
 	{ "[]=",      tile },
 };
 
 /* monitors */
-static const MonitorRule monrules[] = {
+static const struct MonitorRule monrules[] = {
 	/* name       mfact nmaster scale layout       rotate/reflect                x    y */
 	/* example of a HiDPI laptop monitor:
 	{ "eDP-1",    0.5,  1,      2,    &layouts[0], WL_OUTPUT_TRANSFORM_NORMAL,   -1,  -1 },
@@ -87,4 +87,4 @@ LIBINPUT_CONFIG_TAP_MAP_LMR -- 1/2/3 finger tap maps to left/middle/right
 static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_ALT
+#define MODKEY WLR_MODIFIER_LOGO
