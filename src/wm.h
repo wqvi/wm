@@ -151,4 +151,10 @@ int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activa
 
 int run_child(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
+void run(void);
+
+void setup(void);
+
+void cleanup(void);
+
 #endif // WM_H

@@ -72,7 +72,6 @@ static void arrangelayers(struct Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static void buttonpress(struct wl_listener *listener, void *data);
 static void checkidleinhibitor(struct wlr_surface *exclude);
-static void cleanup(void);
 static void cleanupkeyboard(struct wl_listener *listener, void *data);
 static void cleanupmon(struct wl_listener *listener, void *data);
 static void closemon(struct Monitor *m);
@@ -124,14 +123,12 @@ static void printstatus(void);
 static void quit(const union Arg *arg);
 static void rendermon(struct wl_listener *listener, void *data);
 static void resize(struct Client *c, struct wlr_box geo, int interact);
-static void run(void);
 static void setcursor(struct wl_listener *listener, void *data);
 static void setfullscreen(struct Client *c, int fullscreen);
 static void setmfact(const union Arg *arg);
 static void setmon(struct Client *c, struct Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
-static void setup(void);
 static void tag(const union Arg *arg);
 static void tagmon(const union Arg *arg);
 static void tile(struct Monitor *m);
@@ -2353,29 +2350,4 @@ xytonode(double x, double y, struct wlr_surface **psurface,
 	if (pc) *pc = c;
 	if (pl) *pl = l;
 	return node;
-}
-
-int main(int argc, char *argv[]) {
-	int c;
-
-	while ((c = getopt(argc, argv, "s:hv")) != -1) {
-		if (c == 'v')
-			die("dwl " VERSION);
-		else
-			goto usage;
-	}
-	if (optind < argc)
-		goto usage;
-
-	wlr_log_init(WLR_DEBUG, NULL);
-	/* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
-	if (!getenv("XDG_RUNTIME_DIR"))
-		die("XDG_RUNTIME_DIR must be set");
-	setup();
-	run();
-	cleanup();
-	return EXIT_SUCCESS;
-
-usage:
-	die("Usage: %s [-v] [-s startup command]", argv[0]);
 }
