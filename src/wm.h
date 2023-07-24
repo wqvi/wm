@@ -72,11 +72,6 @@ struct LayerSurface {
 	struct wl_listener surface_commit;
 };
 
-struct Layout {
-	const char *symbol;
-	void (*arrange)(struct Monitor *);
-};
-
 struct Monitor {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
@@ -89,13 +84,11 @@ struct Monitor {
 	struct wlr_box m; // monitor area, layout-relative
 	struct wlr_box w; // window area, layout-relative
 	struct wl_list layers[4]; // LayerSurface::link
-	const struct Layout *lt[2];
 	unsigned int seltags;
 	unsigned int sellt;
 	uint32_t tagset[2];
 	double mfact;
 	int nmaster;
-	char ltsymbol[16];
 };
 
 struct MonitorRule {
@@ -103,7 +96,6 @@ struct MonitorRule {
 	float mfact;
 	int nmaster;
 	float scale;
-	const struct Layout *lt;
 	enum wl_output_transform rr;
 	int x, y;
 };
