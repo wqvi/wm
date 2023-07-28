@@ -10,7 +10,6 @@ static void handlesig(int signo);
 
 static void quit(void) {
 	wl_display_terminate(server->display);
-	free(server);
 }
 
 static void handlesig(int signo) {
