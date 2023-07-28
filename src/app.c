@@ -6,19 +6,18 @@
 
 struct server *server;
 
-static void quit(const union Arg *arg);
-
 static void handlesig(int signo);
 
-void quit(const union Arg *arg) {
+static void quit(void) {
 	wl_display_terminate(server->display);
+	free(server);
 }
 
-void handlesig(int signo) {
+static void handlesig(int signo) {
 	if (signo == SIGCHLD) {
 		while (waitpid(-1, NULL, WNOHANG) > 0);
 	} else if (signo == SIGINT || signo == SIGTERM) {
-		quit(NULL);
+		quit();
 	}
 }
 
@@ -61,6 +60,8 @@ void setup(void) {
 	server->request_cursor.notify = setcursor;
 	server->request_set_psel.notify = setpsel;
 	server->request_set_sel.notify = setsel;
+
+	server->cursor_image = "left_ptr";
 
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, manging Wayland globals, and so on. */
@@ -250,7 +251,7 @@ void run(void) {
 	 * initialized, as the image/coordinates are not transformed for the
 	 * monitor when displayed here */
 	wlr_cursor_warp_closest(server->cursor, NULL, server->cursor->x, server->cursor->y);
-	wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, "left_ptr", server->cursor);
+	wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, server->cursor_image, server->cursor);
 	
 	wlr_log(WLR_INFO, "We made it to just before running the display somehow!");
 
@@ -272,4 +273,5 @@ void cleanup(void) {
 	wlr_output_layout_destroy(server->output_layout);
 	wlr_seat_destroy(server->seat);
 	wl_display_destroy(server->display);
+	free(server);
 }

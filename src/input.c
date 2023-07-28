@@ -155,8 +155,8 @@ void motionnotify(uint32_t time) {
 	/* If there's no client surface under the cursor, set the cursor image to a
 	 * default. This is what makes the cursor image appear when you move it
 	 * off of a client or over its border. */
-	if (!surface && !server->seat->drag)
-		wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, "left_ptr", server->cursor);
+	if (!surface && !server->seat->drag && (!server->cursor_image || strcmp(server->cursor_image, "left_ptr")))
+		wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, (server->cursor_image = "left_ptr"), server->cursor);
 
 	pointerfocus(c, surface, sx, sy, time);
 }

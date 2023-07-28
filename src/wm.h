@@ -216,6 +216,7 @@ struct server {
 	unsigned int cursor_mode;
 	int grabcx, grabcy;
 	struct Client *grabc;
+	const char *cursor_image;
 
 	struct wl_list keyboards;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
