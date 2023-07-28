@@ -1,44 +1,17 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/wait.h>
-#include <wayland-server-core.h>
-#include <wlr/backend.h>
-#include <wlr/render/allocator.h>
-#include <wlr/render/wlr_renderer.h>
-#include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_data_control_v1.h>
-#include <wlr/types/wlr_data_device.h>
-#include <wlr/types/wlr_export_dmabuf_v1.h>
-#include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_idle.h>
-#include <wlr/types/wlr_idle_inhibit_v1.h>
-#include <wlr/types/wlr_idle_notify_v1.h>
-#include <wlr/types/wlr_input_inhibitor.h>
-#include <wlr/types/wlr_layer_shell_v1.h>
-#include <wlr/types/wlr_output_management_v1.h>
-#include <wlr/types/wlr_presentation_time.h>
-#include <wlr/types/wlr_primary_selection_v1.h>
-#include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_screencopy_v1.h>
-#include <wlr/types/wlr_server_decoration.h>
-#include <wlr/types/wlr_session_lock_v1.h>
-#include <wlr/types/wlr_single_pixel_buffer_v1.h>
-#include <wlr/types/wlr_subcompositor.h>
-#include <wlr/types/wlr_viewporter.h>
-#include <wlr/types/wlr_virtual_keyboard_v1.h>
-#include <wlr/types/wlr_xcursor_manager.h>
-#include <wlr/types/wlr_xdg_activation_v1.h>
-#include <wlr/types/wlr_xdg_decoration_v1.h>
-#include <wlr/types/wlr_xdg_output_v1.h>
-#include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/log.h>
 #include "wm.h"
+
+struct server *server;
 
 static void quit(const union Arg *arg);
 
 static void handlesig(int signo);
 
 void quit(const union Arg *arg) {
-	// wl_display_terminate(dpy);
+	wl_display_terminate(server->display);
 }
 
 void handlesig(int signo) {
@@ -49,14 +22,45 @@ void handlesig(int signo) {
 	}
 }
 
-void setup(struct server *server) {
+void setup(void) {
 	int sig[4] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
 	struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
+
+	server = malloc(sizeof(struct server));
+	if (!server)
+		die("Failed to allocate server");
+
 	sigemptyset(&sa.sa_mask);
 
 	for (int i = 0; i < 4; i++) {
 		sigaction(sig[i], &sa, NULL);
 	}
+
+	server->cursor_axis.notify = axisnotify;
+	server->cursor_button.notify = buttonpress;
+	server->cursor_frame.notify = cursorframe;
+
+	server->cursor_motion.notify = motionrelative;
+	server->cursor_motion_absolute.notify = motionabsolute;
+
+	server->idle_inhibitor_create.notify = createidleinhibitor;
+	server->idle_inhibitor_destroy.notify = destroyidleinhibitor;
+	server->session_lock_create_lock.notify = locksession;
+	server->session_lock_mgr_destroy.notify = destroysessionmgr;
+
+	server->layout_change.notify = updatemons;
+	server->new_input.notify = inputdevice;
+	server->new_virtual_keyboard.notify = virtualkeyboard;
+	server->new_output.notify = createmon;
+	server->new_xdg_surface.notify = createnotify;
+	server->new_xdg_decoration.notify = createdecoration;
+	server->new_layer_shell_surface.notify = createlayersurface;
+	server->output_mgr_apply.notify = outputmgrapply;
+	server->output_mgr_test.notify = outputmgrtest;
+	server->request_activate.notify = urgent;
+	server->request_cursor.notify = setcursor;
+	server->request_set_psel.notify = setpsel;
+	server->request_set_sel.notify = setsel;
 
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, manging Wayland globals, and so on. */
@@ -211,19 +215,24 @@ void setup(struct server *server) {
 	wl_signal_add(&server->output_mgr->events.test, &server->output_mgr_test);
 
 	wlr_scene_set_presentation(server->scene, wlr_presentation_create(server->display, server->backend));
+	
+	wlr_log(WLR_INFO, "We created the server?");
 }
 
-void run(struct server *server) {
+void run(void) {
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(server->display);
 	if (!socket)
 		die("startup: display_add_socket_auto");
 	setenv("WAYLAND_DISPLAY", socket, 1);
+	wlr_log(WLR_INFO, "Created socket %s", socket);
 
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
 	if (!wlr_backend_start(server->backend))
 		die("startup: backend_start");
+
+	wlr_log(WLR_INFO, "rubber ducky");
 
 	run_daemon("/usr/bin/foot --server", &server->processes, server->activation, server->seat);
 	//run_subprocess("/usr/bin/dbus-update-activation-environment --all");
@@ -242,6 +251,8 @@ void run(struct server *server) {
 	 * monitor when displayed here */
 	wlr_cursor_warp_closest(server->cursor, NULL, server->cursor->x, server->cursor->y);
 	wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, "left_ptr", server->cursor);
+	
+	wlr_log(WLR_INFO, "We made it to just before running the display somehow!");
 
 	/* Run the Wayland event loop. This does not return until you exit the
 	 * compositor. Starting the backend rigged up all of the necessary event
@@ -250,7 +261,7 @@ void run(struct server *server) {
 	wl_display_run(server->display);
 }
 
-void cleanup(struct server *server) {
+void cleanup(void) {
 	wl_display_destroy_clients(server->display);
 	wlr_backend_destroy(server->backend);
 	wlr_scene_node_destroy(&server->scene->tree.node);

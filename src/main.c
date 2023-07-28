@@ -2,10 +2,8 @@
 #include <wlr/util/log.h>
 #include "wm.h"
 
-
 int main(int argc, char *argv[]) {
 	int c;
-	struct server server;
 
 	while ((c = getopt(argc, argv, "s:hv")) != -1) {
 		if (c == 'v')
@@ -21,9 +19,9 @@ int main(int argc, char *argv[]) {
 	if (!getenv("XDG_RUNTIME_DIR"))
 		die("XDG_RUNTIME_DIR must be set");
 
-	setup(&server);
-	run(&server);
-	cleanup(&server);
+	setup();
+	run();
+	cleanup();
 	return EXIT_SUCCESS;
 
 usage:

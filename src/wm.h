@@ -1,11 +1,45 @@
 #ifndef WM_H
 #define WM_H
 
+#include <linux/input-event-codes.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
+#include <wayland-server-core.h>
+#include <wlr/backend.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_control_v1.h>
+#include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_idle.h>
+#include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
+#include <wlr/types/wlr_input_inhibitor.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_session_lock_v1.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
+#include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_viewporter.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
 #include <xkbcommon/xkbcommon.h>
+
+#define IDLE_NOTIFY_ACTIVITY wlr_idle_notify_activity(server->idle, server->seat), wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat)
+#define MODKEY WLR_MODIFIER_LOGO
 
 union Arg {
 	int i;
@@ -166,6 +200,7 @@ struct server {
 	struct wlr_session_lock_manager_v1 *session_lock_mgr;
 	struct wlr_scene_rect *locked_bg;
 	struct wlr_session_lock_v1 *cur_lock;
+	int locked;
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wlr_xdg_activation_v1 *activation;
@@ -177,8 +212,11 @@ struct server {
 	struct wlr_output_manager_v1 *output_mgr;
 
 	struct wlr_cursor *cursor;
-	struct wlr_xcursor_manager *cursor_mgr;	
-	
+	struct wlr_xcursor_manager *cursor_mgr;
+	unsigned int cursor_mode;
+	int grabcx, grabcy;
+	struct Client *grabc;
+
 	struct wl_list keyboards;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
 	
@@ -186,6 +224,7 @@ struct server {
 	struct wl_listener layout_change;
 	struct wl_listener new_output;
 	struct wl_listener idle_inhibitor_create;
+	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener new_layer_shell_surface;
 	struct wl_listener new_xdg_surface;
 	struct wl_listener new_xdg_decoration;
@@ -212,6 +251,8 @@ struct server {
 	struct wl_list focus_stack;
 };
 
+extern struct server *server;
+
 int run_daemon(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
 
 int run_child(const char *cmd, struct wl_list *processes, struct wlr_xdg_activation_v1 *activation, struct wlr_seat *seat);
@@ -222,10 +263,92 @@ void die(const char *fmt, ...);
 
 void *ecalloc(size_t nmemb, size_t size);
 
-void setup(struct server *server);
+void setup(void);
 
-void run(struct server *server);
+void run(void);
 
-void cleanup(struct server *server);
+void cleanup(void);
+
+// Listeners
+
+void axisnotify(struct wl_listener *listener, void *data);
+
+void buttonpress(struct wl_listener *listener, void *data);
+
+void cursorframe(struct wl_listener *listener, void *data);
+
+void motionnotify(uint32_t time);
+
+void motionrelative(struct wl_listener *listener, void *data);
+
+void checkidleinhibitor(struct wlr_surface *exclude);
+
+void createidleinhibitor(struct wl_listener *listener, void *data);
+
+void destroyidleinhibitor(struct wl_listener *listener, void *data);
+
+void destroylayersurfacenotify(struct wl_listener *listener, void *data);
+
+void destroylock(struct SessionLock *lock, int unlocked);
+
+void destroylocksurface(struct wl_listener *listener, void *data);
+
+void destroynotify(struct wl_listener *listener, void *data);
+
+void destroysessionlock(struct wl_listener *listener, void *data);
+
+void destroysessionmgr(struct wl_listener *listener, void *data);
+
+void focusclient(struct Client *c, int lift);
+
+struct Client *focustop(struct Monitor *m);
+
+void client_notify_enter(struct wlr_surface *s, struct wlr_keyboard *kb);
+
+struct wlr_scene_node *xytonode(double x, double y, struct wlr_surface **psurface, struct Client **pc, struct LayerSurface **pl, double *nx, double *ny);
+
+void pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, double sy, uint32_t time);
+
+void setmon(struct Client *c, struct Monitor *m, uint32_t newtags);
+
+void resize(struct Client *c, struct wlr_box geo, int interact);
+
+void motionabsolute(struct wl_listener *listener, void *data);
+
+void virtualkeyboard(struct wl_listener *listener, void *data);
+
+void urgent(struct wl_listener *listener, void *data);
+
+void setpsel(struct wl_listener *listener, void *data);
+
+void setsel(struct wl_listener *listener, void *data);
+
+void setcursor(struct wl_listener *listener, void *data);
+
+void outputmgrtest(struct wl_listener *listener, void *data);
+
+void outputmgrapply(struct wl_listener *listener, void *data);
+
+void locksession(struct wl_listener *listener, void *data);
+
+void inputdevice(struct wl_listener *listener, void *data);
+
+void createnotify(struct wl_listener *listener, void *data);
+
+void createmon(struct wl_listener *listener, void *data);
+
+void createlayersurface(struct wl_listener *listener, void *data);
+
+void createdecoration(struct wl_listener *listener, void *data);
+
+void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
+
+void unmapnotify(struct wl_listener *listener, void *data);
+
+void updatemons(struct wl_listener *listener, void *data);
+
+void updatetitle(struct wl_listener *listener, void *data);
+
+#include "client.h"
 
 #endif // WM_H

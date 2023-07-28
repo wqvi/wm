@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wlr/types/wlr_output_layout.h>
 #include "wm.h"
 
 struct Monitor * xytomon(struct wlr_output_layout *output_layout, double x, double y) {

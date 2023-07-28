@@ -15,7 +15,7 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: bin dwl
 
-dwl: bin/main.o bin/app.o bin/dwl.o bin/util.o bin/subprocess.o
+dwl: bin/dwl.o bin/client.o bin/input.o bin/output.o bin/main.o bin/app.o bin/idle.o bin/util.o bin/subprocess.o
 	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o bin/$@
 
 bin/main.o: src/main.c config.mk
@@ -24,9 +24,17 @@ bin/app.o: src/app.c config.mk src/xdg-shell-protocol.h src/wlr-layer-shell-unst
 
 bin/dwl.o: src/dwl.c config.mk src/client.h src/xdg-shell-protocol.h src/wlr-layer-shell-unstable-v1-protocol.h
 
-bin/util.o: src/util.c src/util.h
+bin/idle.o: src/idle.c config.mk src/xdg-shell-protocol.h src/wlr-layer-shell-unstable-v1-protocol.h
+
+bin/util.o: src/util.c src/wm.h
 
 bin/subprocess.o: src/subprocess.c src/xdg-shell-protocol.h
+
+bin/input.o: src/input.c config.mk src/xdg-shell-protocol.h
+
+bin/output.o: src/output.c config.mk src/xdg-shell-protocol.h
+
+bin/client.o: src/client.c
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
