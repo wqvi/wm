@@ -445,3 +445,42 @@ void createkeyboard(struct wlr_keyboard *keyboard) {
 	// And add the keyboard to our list of keyboards
 	wl_list_insert(&server->keyboards, &kb->link);
 }
+
+void createpointer(struct wlr_pointer *pointer) {
+	if (wlr_input_device_is_libinput(&pointer->base)) {
+		struct libinput_device *libinput_device = (struct libinput_device*)
+			wlr_libinput_get_device_handle(&pointer->base);
+
+		if (libinput_device_config_tap_get_finger_count(libinput_device)) {
+			libinput_device_config_tap_set_enabled(libinput_device, 1);
+			libinput_device_config_tap_set_drag_enabled(libinput_device, 1);
+			libinput_device_config_tap_set_drag_lock_enabled(libinput_device, 1);
+			libinput_device_config_tap_set_button_map(libinput_device, LIBINPUT_CONFIG_TAP_MAP_LRM);
+		}
+
+		if (libinput_device_config_scroll_has_natural_scroll(libinput_device))
+			libinput_device_config_scroll_set_natural_scroll_enabled(libinput_device, 0);
+
+		if (libinput_device_config_dwt_is_available(libinput_device))
+			libinput_device_config_dwt_set_enabled(libinput_device, 1);
+		
+		if (libinput_device_config_middle_emulation_is_available(libinput_device))
+			libinput_device_config_middle_emulation_set_enabled(libinput_device, 0);
+
+		if (libinput_device_config_scroll_get_methods(libinput_device) != LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
+			libinput_device_config_scroll_set_method (libinput_device, LIBINPUT_CONFIG_SCROLL_2FG);
+
+		if (libinput_device_config_click_get_methods(libinput_device) != LIBINPUT_CONFIG_CLICK_METHOD_NONE)
+			libinput_device_config_click_set_method (libinput_device, LIBINPUT_CONFIG_CLICK_METHOD_BUTTON_AREAS);
+
+		if (libinput_device_config_send_events_get_modes(libinput_device))
+			libinput_device_config_send_events_set_mode(libinput_device, LIBINPUT_CONFIG_SEND_EVENTS_ENABLED);
+
+		if (libinput_device_config_accel_is_available(libinput_device)) {
+			libinput_device_config_accel_set_profile(libinput_device, LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE);
+			libinput_device_config_accel_set_speed(libinput_device, -0.75);
+		}
+	}
+
+	wlr_cursor_attach_input_device(server->cursor, &pointer->base);
+}
