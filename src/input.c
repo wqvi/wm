@@ -1,5 +1,37 @@
 #include "wm.h"
 
+static void focus_prev(void) {
+	struct Client *c, *sel = get_top(server->selmon);
+	if (!sel || sel->is_fullscreen)
+		return;
+
+	wl_list_for_each_reverse(c, &sel->link, link) {
+		if (&c->link == &server->clients)
+			continue; // wrap past the sentinel node
+		if (VISIBLEON(c, server->selmon))
+			break; // found it
+	}
+
+	// if only one client is visible on server->selmon, then c == sel
+	focusclient(c, 1);
+}
+
+static void focus_next(void) {
+	struct Client *c, *sel = get_top(server->selmon);
+	if (!sel || sel->is_fullscreen)
+		return;
+
+	wl_list_for_each(c, &sel->link, link) {
+		if (&c->link == &server->clients)
+			continue; // wrap past the sentinel node
+		if (VISIBLEON(c, server->selmon))
+			break; // found it - dwl source code author
+	}
+
+	// if only one client is visible on server->selmon, then c == sel
+	focusclient(c, 1);
+}
+
 void axisnotify(struct wl_listener *listener, void *data) {
 	/* This event is forwarded by the cursor when a pointer emits an axis event,
 	 * for example when you move the scroll wheel. */
@@ -174,3 +206,208 @@ void motionrelative(struct wl_listener *listener, void *data) {
 	motionnotify(event->time_msec);
 }
 
+static void spawn_terminal(void) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/footclient", "/usr/bin/footclient", NULL);
+		die("dwl: execl /usr/bin/footclient failed:");
+	}
+}
+
+static void spawn_bemenu(void) {
+	if (fork() == 0) {
+		dup2(STDERR_FILENO, STDOUT_FILENO);
+		setsid();
+		execl("/usr/bin/bemenu-run", "/usr/bin/bemenu-run", NULL);
+		die("bemenu-run: execl /usr/bin/bemenu-run failed:");
+	}
+}
+
+
+int keybinding(uint32_t mods, xkb_keysym_t sym) {
+	if (!(mods & MODKEY)) return 0;
+
+	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+		view(1 << (sym - XKB_KEY_1));
+		return 1;
+	}
+	
+	switch (sym) {
+		case XKB_KEY_d:
+			spawn_bemenu();
+			break;
+		case XKB_KEY_Return:
+			spawn_terminal();
+			return 1;
+		case XKB_KEY_Left:
+		case XKB_KEY_j:
+			focus_next();
+			return 1;
+		case XKB_KEY_Right:
+		case XKB_KEY_k:
+			focus_prev();
+			return 1;
+		case XKB_KEY_Up:
+		case XKB_KEY_i:
+			incnmaster(+1);
+			return 1;
+		case XKB_KEY_Down:
+		case XKB_KEY_u:
+			incnmaster(-1);
+			return 1;
+		case XKB_KEY_Tab:
+			view(0);
+			return 1;
+		case XKB_KEY_f:
+			togglefullscreen();
+			return 1;
+		case XKB_KEY_comma:
+			focusmon(WLR_DIRECTION_LEFT);
+			return 1;
+		case XKB_KEY_period:
+			focusmon(WLR_DIRECTION_RIGHT);
+			return 1;
+		default:
+			break;
+	}
+
+	if (!(mods & WLR_MODIFIER_SHIFT)) return 0;
+
+	switch (sym) {
+		case XKB_KEY_exclam:
+			tag(1 << 0);
+			view(1 << 0);
+			return 1;
+		case XKB_KEY_at:	
+			tag(1 << 1);
+			view(1 << 1);
+			return 1;
+		case XKB_KEY_numbersign:
+			tag(1 << 2);
+			view(1 << 2);
+			return 1;
+		case XKB_KEY_dollar:	
+			tag(1 << 3);
+			view(1 << 3);
+			return 1;
+		case XKB_KEY_percent:	
+			tag(1 << 4);
+			view(1 << 4);
+			return 1;
+		case XKB_KEY_asciicircum:	
+			tag(1 << 5);
+			view(1 << 5);
+			return 1;
+		case XKB_KEY_ampersand:	
+			tag(1 << 6);
+			view(1 << 6);
+			return 1;
+		case XKB_KEY_asterisk:
+			tag(1 << 7);
+			view(1 << 7);
+			return 1;
+		case XKB_KEY_parenleft:
+			tag(1 << 8);
+			view(1 << 8);
+			return 1;
+		case XKB_KEY_E:
+			wl_display_terminate(server->display);
+			return 1;
+		case XKB_KEY_Q:
+			killclient();
+			return 1;
+		case XKB_KEY_less:
+			tagmon(WLR_DIRECTION_LEFT);
+			focusmon(WLR_DIRECTION_LEFT);
+			return 1;
+		case XKB_KEY_greater:
+			tagmon(WLR_DIRECTION_RIGHT);
+			focusmon(WLR_DIRECTION_RIGHT);
+			return 1;
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+void
+keypress(struct wl_listener *listener, void *data)
+{
+	int i;
+	/* This event is raised when a key is pressed or released. */
+	struct Keyboard *kb = wl_container_of(listener, kb, key);
+	struct wlr_keyboard_key_event *event = data;
+
+	/* Translate libinput keycode -> xkbcommon */
+	uint32_t keycode = event->keycode + 8;
+	/* Get a list of keysyms based on the keymap for this keyboard */
+	const xkb_keysym_t *syms;
+	int nsyms = xkb_state_key_get_syms(
+			kb->wlr_keyboard->xkb_state, keycode, &syms);
+
+	int handled = 0;
+	uint32_t mods = wlr_keyboard_get_modifiers(kb->wlr_keyboard);
+
+	IDLE_NOTIFY_ACTIVITY;
+
+	/* On _press_ if there is no active screen locker,
+	 * attempt to process a compositor keybinding. */
+	if (!server->locked && !server->input_inhibit_mgr->active_inhibitor
+			&& event->state == WL_KEYBOARD_KEY_STATE_PRESSED)
+		for (i = 0; i < nsyms; i++)
+			handled = keybinding(mods, syms[i]) || handled;
+
+	if (handled && kb->wlr_keyboard->repeat_info.delay > 0) {
+		kb->mods = mods;
+		kb->keysyms = syms;
+		kb->nsyms = nsyms;
+		wl_event_source_timer_update(kb->key_repeat_source,
+				kb->wlr_keyboard->repeat_info.delay);
+	} else {
+		kb->nsyms = 0;
+		wl_event_source_timer_update(kb->key_repeat_source, 0);
+	}
+
+	if (!handled) {
+		/* Pass unhandled keycodes along to the client. */
+		wlr_seat_set_keyboard(server->seat, kb->wlr_keyboard);
+		wlr_seat_keyboard_notify_key(server->seat, event->time_msec,
+			event->keycode, event->state);
+	}
+}
+
+void
+keypressmod(struct wl_listener *listener, void *data)
+{
+	/* This event is raised when a modifier key, such as shift or alt, is
+	 * pressed. We simply communicate this to the client. */
+	struct Keyboard *kb = wl_container_of(listener, kb, modifiers);
+	/*
+	 * A seat can only have one keyboard, but this is a limitation of the
+	 * Wayland protocol - not wlroots. We assign all connected keyboards to the
+	 * same seat. You can swap out the underlying wlr_keyboard like this and
+	 * wlr_seat handles this transparently.
+	 */
+	wlr_seat_set_keyboard(server->seat, kb->wlr_keyboard);
+	/* Send modifiers to the client. */
+	wlr_seat_keyboard_notify_modifiers(server->seat,
+		&kb->wlr_keyboard->modifiers);
+}
+
+int
+keyrepeat(void *data)
+{
+	struct Keyboard *kb = data;
+	int i;
+	if (kb->nsyms && kb->wlr_keyboard->repeat_info.rate > 0) {
+		wl_event_source_timer_update(kb->key_repeat_source,
+				1000 / kb->wlr_keyboard->repeat_info.rate);
+
+		for (i = 0; i < kb->nsyms; i++)
+			keybinding(kb->mods, kb->keysyms[i]);
+	}
+
+	return 0;
+}

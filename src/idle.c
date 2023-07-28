@@ -51,7 +51,7 @@ void destroylock(struct SessionLock *lock, int unlock) {
 
 	wlr_scene_node_set_enabled(&server->locked_bg->node, 0);
 
-	focusclient(focustop(server->selmon), 0);
+	focusclient(get_top(server->selmon), 0);
 	motionnotify(0);
 
 destroy:
@@ -76,7 +76,7 @@ void destroylocksurface(struct wl_listener *listener, void *data) {
 			surface = wl_container_of(server->cur_lock->surfaces.next, surface, link);
 			client_notify_enter(surface->surface, wlr_seat_get_keyboard(server->seat));
 		} else if (!server->locked) {
-			focusclient(focustop(server->selmon), 1);
+			focusclient(get_top(server->selmon), 1);
 		} else {
 			wlr_seat_keyboard_clear_focus(server->seat);
 		}

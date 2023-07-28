@@ -43,6 +43,13 @@
 #include <wlr/util/box.h>
 #include <xkbcommon/xkbcommon.h>
 
+#define MAX(A, B)               ((A) > (B) ? (A) : (B))
+#define MIN(A, B)               ((A) < (B) ? (A) : (B))
+#define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
+#define LENGTH(X)               (sizeof X / sizeof X[0])
+#define END(A)                  ((A) + LENGTH(A))
+#define TAGMASK                 ((1u << tagcount) - 1)
+#define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define IDLE_NOTIFY_ACTIVITY wlr_idle_notify_activity(server->idle, server->seat), wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat)
 #define MODKEY WLR_MODIFIER_LOGO
 
@@ -216,6 +223,8 @@ struct server {
 	struct Client *grabc;
 	const char *cursor_image;
 
+	void *exclusive_focus;
+
 	struct wl_list keyboards;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
 	
@@ -300,7 +309,7 @@ void destroysessionmgr(struct wl_listener *listener, void *data);
 
 void focusclient(struct Client *c, int lift);
 
-struct Client *focustop(struct Monitor *m);
+struct Client *get_top(struct Monitor *m);
 
 void client_notify_enter(struct wlr_surface *s, struct wlr_keyboard *kb);
 
@@ -311,6 +320,52 @@ void pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, doub
 void setmon(struct Client *c, struct Monitor *m, uint32_t newtags);
 
 void resize(struct Client *c, struct wlr_box geo, int interact);
+
+void applybounds(struct Client *c, struct wlr_box *bbox);
+
+void applyrules(struct Client *c);
+
+void arrange(struct Monitor *m);
+
+void arrangelayer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive);
+
+void arrangelayers(struct Monitor *m);
+
+void closemon(struct Monitor *m);
+
+void createkeyboard(struct wlr_keyboard *keyboard);
+
+void createpointer(struct wlr_pointer *pointer);
+
+struct Monitor *dirtomon(enum wlr_direction dir);
+
+void focusmon(int dir);
+
+int keybinding(uint32_t mods, xkb_keysym_t sym);
+
+int keyrepeat(void *data);
+
+void killclient(void);
+
+void maximizenotify(struct wl_listener *listener, void *data);
+
+void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
+
+void printstatus(void);
+
+void setfullscreen(struct Client *c, int fullscreen);
+
+void tag(uint32_t ui);
+
+void tagmon(int dir);
+
+void tile(struct Monitor *m);
+
+void togglefullscreen(void);
+
+void view(uint32_t ui);
+
+void incnmaster(int i);
 
 #include "listeners.h"
 
