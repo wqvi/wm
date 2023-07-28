@@ -35,8 +35,6 @@ static struct Monitor *dirtomon(enum wlr_direction dir);
 
 static void focusmon(int dir);
 
-static void focusstack(const union Arg *arg);
-
 static void incnmaster(const union Arg *arg);
 
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
@@ -697,29 +695,35 @@ void focusmon(int dir) {
 	focusclient(focustop(server->selmon), 1);
 }
 
-void
-focusstack(const union Arg *arg)
-{
-	/* Focus the next or previous client (in tiling order) on selmon */
+void focus_prev(void) {
 	struct Client *c, *sel = focustop(server->selmon);
 	if (!sel || sel->is_fullscreen)
 		return;
-	if (arg->i > 0) {
-		wl_list_for_each(c, &sel->link, link) {
-			if (&c->link == &server->clients)
-				continue; /* wrap past the sentinel node */
-			if (VISIBLEON(c, server->selmon))
-				break; /* found it */
-		}
-	} else {
-		wl_list_for_each_reverse(c, &sel->link, link) {
-			if (&c->link == &server->clients)
-				continue; /* wrap past the sentinel node */
-			if (VISIBLEON(c, server->selmon))
-				break; /* found it */
-		}
+
+	wl_list_for_each_reverse(c, &sel->link, link) {
+		if (&c->link == &server->clients)
+			continue; // wrap past the sentinel node
+		if (VISIBLEON(c, server->selmon))
+			break; // found it
 	}
-	/* If only one client is visible on server->selmon, then c == sel */
+
+	// if only one client is visible on server->selmon, then c == sel
+	focusclient(c, 1);
+}
+
+void focus_next(void) {
+	struct Client *c, *sel = focustop(server->selmon);
+	if (!sel || sel->is_fullscreen)
+		return;
+
+	wl_list_for_each(c, &sel->link, link) {
+		if (&c->link == &server->clients)
+			continue; // wrap past the sentinel node
+		if (VISIBLEON(c, server->selmon))
+			break; // found it - dwl source code author
+	}
+
+	// if only one client is visible on server->selmon, then c == sel
 	focusclient(c, 1);
 }
 
@@ -817,11 +821,11 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			return 1;
 		case XKB_KEY_Left:
 		case XKB_KEY_j:
-			focusstack(&(union Arg){.i = +1});
+			focus_next();
 			return 1;
 		case XKB_KEY_Right:
 		case XKB_KEY_k:
-			focusstack(&(union Arg){.i = -1});
+			focus_prev();
 			return 1;
 		case XKB_KEY_Up:
 		case XKB_KEY_i:
