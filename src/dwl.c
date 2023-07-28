@@ -35,13 +35,11 @@ static struct Monitor *dirtomon(enum wlr_direction dir);
 
 static void focusmon(int dir);
 
-static void incnmaster(const union Arg *arg);
-
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
 
 static int keyrepeat(void *data);
 
-static void killclient(const union Arg *arg);
+static void killclient(void);
 
 static void maximizenotify(struct wl_listener *listener, void *data);
 
@@ -51,17 +49,17 @@ static void printstatus(void);
 
 static void setfullscreen(struct Client *c, int fullscreen);
 
-static void setmfact(const union Arg *arg);
+static void setmfact(float factor);
 
-static void tag(const union Arg *arg);
+static void tag(uint32_t ui);
 
-static void tagmon(const union Arg *arg);
+static void tagmon(int dir);
 
 static void tile(struct Monitor *m);
 
-static void togglefullscreen(const union Arg *arg);
+static void togglefullscreen(void);
 
-static void view(const union Arg *arg);
+static void view(uint32_t ui);
 
 /* variables */
 static const char broken[] = "broken";
@@ -747,12 +745,13 @@ fullscreennotify(struct wl_listener *listener, void *data)
 	setfullscreen(c, client_wants_fullscreen(c));
 }
 
-void
-incnmaster(const union Arg *arg)
-{
-	if (!arg || !server->selmon)
+static void incnmaster(int i) {
+	if (!server->selmon)
 		return;
-	server->selmon->nmaster = MAX(server->selmon->nmaster + arg->i, 0);
+	// this needs to be improved
+	// there needs to be some comparison to prevent
+	// nmaster from becoming to astronomically high up
+	server->selmon->nmaster = MAX(server->selmon->nmaster + i, 0);
 	arrange(server->selmon);
 }
 
@@ -808,7 +807,7 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 	if (!(mods & MODKEY)) return 0;
 
 	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
-		view(&(union Arg){.ui = 1 << (sym - XKB_KEY_1)});
+		view(1 << (sym - XKB_KEY_1));
 		return 1;
 	}
 	
@@ -829,17 +828,17 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			return 1;
 		case XKB_KEY_Up:
 		case XKB_KEY_i:
-			incnmaster(&(union Arg){.i = +1});
+			incnmaster(+1);
 			return 1;
 		case XKB_KEY_Down:
 		case XKB_KEY_u:
-			incnmaster(&(union Arg){.i = -1});
+			incnmaster(-1);
 			return 1;
 		case XKB_KEY_Tab:
-			view(NULL);
+			view(0);
 			return 1;
 		case XKB_KEY_f:
-			togglefullscreen(NULL);
+			togglefullscreen();
 			return 1;
 		case XKB_KEY_comma:
 			focusmon(WLR_DIRECTION_LEFT);
@@ -855,40 +854,40 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 
 	switch (sym) {
 		case XKB_KEY_exclam:
-			tag(&(union Arg){.ui = 1 << 0});
-			view(&(union Arg){.ui = 1 << 0});
+			tag(1 << 0);
+			view(1 << 0);
 			return 1;
 		case XKB_KEY_at:	
-			tag(&(union Arg){.ui = 1 << 1});
-			view(&(union Arg){.ui = 1 << 1});
+			tag(1 << 1);
+			view(1 << 1);
 			return 1;
 		case XKB_KEY_numbersign:
-			tag(&(union Arg){.ui = 1 << 2});
-			view(&(union Arg){.ui = 1 << 2});
+			tag(1 << 2);
+			view(1 << 2);
 			return 1;
 		case XKB_KEY_dollar:	
-			tag(&(union Arg){.ui = 1 << 3});
-			view(&(union Arg){.ui = 1 << 3});
+			tag(1 << 3);
+			view(1 << 3);
 			return 1;
 		case XKB_KEY_percent:	
-			tag(&(union Arg){.ui = 1 << 4});
-			view(&(union Arg){.ui = 1 << 4});
+			tag(1 << 4);
+			view(1 << 4);
 			return 1;
 		case XKB_KEY_asciicircum:	
-			tag(&(union Arg){.ui = 1 << 5});
-			view(&(union Arg){.ui = 1 << 5});
+			tag(1 << 5);
+			view(1 << 5);
 			return 1;
 		case XKB_KEY_ampersand:	
-			tag(&(union Arg){.ui = 1 << 6});
-			view(&(union Arg){.ui = 1 << 6});
+			tag(1 << 6);
+			view(1 << 6);
 			return 1;
 		case XKB_KEY_asterisk:
-			tag(&(union Arg){.ui = 1 << 7});
-			view(&(union Arg){.ui = 1 << 7});
+			tag(1 << 7);
+			view(1 << 7);
 			return 1;
 		case XKB_KEY_parenleft:
-			tag(&(union Arg){.ui = 1 << 8});
-			view(&(union Arg){.ui = 1 << 8});
+			tag(1 << 8);
+			view(1 << 8);
 			return 1;
 		default:
 			break;
@@ -899,22 +898,22 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			wl_display_terminate(server->display);
 			return 1;
 		case XKB_KEY_Q:
-			killclient(NULL);
+			killclient();
 			return 1;
 		case XKB_KEY_Left:
 		case XKB_KEY_h:
-			setmfact(&(union Arg){.f = -0.05});
+			setmfact(-0.05);
 			return 1;
 		case XKB_KEY_Right:
 		case XKB_KEY_l:
-			setmfact(&(union Arg){.f = +0.05});
+			setmfact(+0.05);
 			return 1;
 		case XKB_KEY_less:
-			tagmon(&(union Arg){.i = WLR_DIRECTION_LEFT});
+			tagmon(WLR_DIRECTION_LEFT);
 			focusmon(WLR_DIRECTION_LEFT);
 			return 1;
 		case XKB_KEY_greater:
-			tagmon(&(union Arg){.i = WLR_DIRECTION_RIGHT});
+			tagmon(WLR_DIRECTION_RIGHT);
 			focusmon(WLR_DIRECTION_RIGHT);
 			return 1;
 
@@ -1005,9 +1004,7 @@ keyrepeat(void *data)
 	return 0;
 }
 
-void
-killclient(const union Arg *arg)
-{
+void killclient(void) {
 	struct Client *sel = focustop(server->selmon);
 	if (sel)
 		client_send_close(sel);
@@ -1353,14 +1350,12 @@ setfullscreen(struct Client *c, int fullscreen)
 }
 
 /* arg > 1.0 will set mfact absolutely */
-void
-setmfact(const union Arg *arg)
-{
+void setmfact(float factor) {
 	float f;
 
-	if (!arg || !server->selmon)
+	if (!server->selmon)
 		return;
-	f = arg->f < 1.0 ? arg->f + server->selmon->mfact : arg->f - 1.0;
+	f = factor < 1.0 ? factor + server->selmon->mfact : factor - 1.0;
 	if (f < 0.1 || f > 0.9)
 		return;
 	server->selmon->mfact = f;
@@ -1414,24 +1409,20 @@ setsel(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
-void
-tag(const union Arg *arg)
-{
+void tag(uint32_t ui) {
 	struct Client *sel = focustop(server->selmon);
-	if (sel && arg->ui & TAGMASK) {
-		sel->tags = arg->ui & TAGMASK;
+	if (sel && ui & TAGMASK) {
+		sel->tags = ui & TAGMASK;
 		focusclient(focustop(server->selmon), 1);
 		arrange(server->selmon);
 	}
 	printstatus();
 }
 
-void
-tagmon(const union Arg *arg)
-{
+void tagmon(int dir) {
 	struct Client *sel = focustop(server->selmon);
 	if (sel)
-		setmon(sel, dirtomon(arg->i), 0);
+		setmon(sel, dirtomon(dir), 0);
 }
 
 void tile(struct Monitor *m) {
@@ -1476,9 +1467,7 @@ void tile(struct Monitor *m) {
 	}
 }
 
-void
-togglefullscreen(const union Arg *arg)
-{
+void togglefullscreen(void) {
 	struct Client *sel = focustop(server->selmon);
 	if (sel)
 		setfullscreen(sel, !sel->is_fullscreen);
@@ -1636,14 +1625,12 @@ urgent(struct wl_listener *listener, void *data)
 	}
 }
 
-void
-view(const union Arg *arg)
-{
-	if (!server->selmon || (arg->ui & TAGMASK) == server->selmon->tagset[server->selmon->seltags])
+void view(uint32_t ui) {
+	if (!server->selmon || (ui & TAGMASK) == server->selmon->tagset[server->selmon->seltags])
 		return;
 	server->selmon->seltags ^= 1; /* toggle sel tagset */
-	if (arg->ui & TAGMASK)
-		server->selmon->tagset[server->selmon->seltags] = arg->ui & TAGMASK;
+	if (ui & TAGMASK)
+		server->selmon->tagset[server->selmon->seltags] = ui & TAGMASK;
 	focusclient(focustop(server->selmon), 1);
 	arrange(server->selmon);
 	printstatus();

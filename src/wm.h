@@ -46,13 +46,6 @@
 #define IDLE_NOTIFY_ACTIVITY wlr_idle_notify_activity(server->idle, server->seat), wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat)
 #define MODKEY WLR_MODIFIER_LOGO
 
-union Arg {
-	int i;
-	uint32_t ui;
-	float f;
-	const void *v;
-};
-
 struct Client {
 	unsigned int type; // Never X11
 	struct wlr_box geom; // layout-relative, includes border
