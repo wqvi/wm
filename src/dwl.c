@@ -127,17 +127,6 @@ void arrangelayers(struct Monitor *m) {
 	}
 }
 
-void cleanupkeyboard(struct wl_listener *listener, void *data) {
-	struct Keyboard *kb = wl_container_of(listener, kb, destroy);
-
-	wl_event_source_remove(kb->key_repeat_source);
-	wl_list_remove(&kb->link);
-	wl_list_remove(&kb->modifiers.link);
-	wl_list_remove(&kb->key.link);
-	wl_list_remove(&kb->destroy.link);
-	free(kb);
-}
-
 void cleanupmon(struct wl_listener *listener, void *data) {
 	struct Monitor *m = wl_container_of(listener, m, destroy);
 	struct LayerSurface *l, *tmp;
@@ -233,43 +222,6 @@ void createdecoration(struct wl_listener *listener, void *data) {
 	wlr_xdg_toplevel_decoration_v1_set_mode(dec, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
-void createidleinhibitor(struct wl_listener *listener, void *data) {
-	struct wlr_idle_inhibitor_v1 *idle_inhibitor = data;
-	wl_signal_add(&idle_inhibitor->events.destroy, &server->idle_inhibitor_destroy);
-
-	checkidleinhibitor(NULL);
-}
-
-void createkeyboard(struct wlr_keyboard *keyboard) {
-	struct xkb_context *context;
-	struct xkb_keymap *keymap;
-	struct Keyboard *kb = keyboard->data = ecalloc(1, sizeof(*kb));
-	kb->wlr_keyboard = keyboard;
-
-	// Prepare an XKB keymap and assign it to the keyboard.
-	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	keymap = xkb_keymap_new_from_names(context, &xkb_rules,
-		XKB_KEYMAP_COMPILE_NO_FLAGS);
-
-	wlr_keyboard_set_keymap(keyboard, keymap);
-	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
-	wlr_keyboard_set_repeat_info(keyboard, repeat_rate, repeat_delay);
-
-	// Here we set up listeners for keyboard events. 
-	LISTEN(&keyboard->events.modifiers, &kb->modifiers, keypressmod);
-	LISTEN(&keyboard->events.key, &kb->key, keypress);
-	LISTEN(&keyboard->base.events.destroy, &kb->destroy, cleanupkeyboard);
-
-	wlr_seat_set_keyboard(server->seat, keyboard);
-
-	kb->key_repeat_source = wl_event_loop_add_timer(
-			wl_display_get_event_loop(server->display), keyrepeat, kb);
-
-	// And add the keyboard to our list of keyboards
-	wl_list_insert(&server->keyboards, &kb->link);
-}
-
 void createlayersurface(struct wl_listener *listener, void *data) {
 	struct wlr_layer_surface_v1 *wlr_layer_surface = data;
 	struct LayerSurface *layersurface;
@@ -315,23 +267,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
 	layersurface->mapped = 1;
 	arrangelayers(layersurface->mon);
 	wlr_layer_surface->current = old_state;
-}
-
-void createlocksurface(struct wl_listener *listener, void *data) {
-	struct SessionLock *lock = wl_container_of(listener, lock, new_surface);
-	struct wlr_session_lock_surface_v1 *lock_surface = data;
-	struct Monitor *m = lock_surface->output->data;
-	struct wlr_scene_tree *scene_tree = lock_surface->surface->data =
-		wlr_scene_subsurface_tree_create(lock->scene, lock_surface->surface);
-	m->lock_surface = lock_surface;
-
-	wlr_scene_node_set_position(&scene_tree->node, m->m.x, m->m.y);
-	wlr_session_lock_surface_v1_configure(lock_surface, m->m.width, m->m.height);
-
-	LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface, destroylocksurface);
-
-	if (m == server->selmon)
-		client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(server->seat));
 }
 
 void createmon(struct wl_listener *listener, void *data) {

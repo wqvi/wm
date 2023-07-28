@@ -27,8 +27,8 @@ void checkidleinhibitor(struct wlr_surface *exclude) {
 }
 
 void destroyidleinhibitor(struct wl_listener *listener, void *data) {
-	/* `data` is the wlr_surface of the idle inhibitor being destroyed,
-	 * at this point the idle inhibitor is still in the list of the manager */
+	// `data` is the wlr_surface of the idle inhibitor being destroyed,
+	// at this point the idle inhibitor is still in the list of the manager
 	checkidleinhibitor(wlr_surface_get_root_surface(data));
 }
 
@@ -84,7 +84,7 @@ void destroylocksurface(struct wl_listener *listener, void *data) {
 }
 
 void destroynotify(struct wl_listener *listener, void *data) {
-	/* Called when the surface is destroyed and should never be shown again. */
+	// Called when the surface is destroyed and should never be shown again.
 	struct Client *c = wl_container_of(listener, c, destroy);
 	wl_list_remove(&c->map.link);
 	wl_list_remove(&c->unmap.link);
@@ -102,4 +102,29 @@ void destroysessionlock(struct wl_listener *listener, void *data) {
 void destroysessionmgr(struct wl_listener *listener, void *data) {
 	wl_list_remove(&server->session_lock_create_lock.link);
 	wl_list_remove(&server->session_lock_mgr_destroy.link);
+}
+
+void createidleinhibitor(struct wl_listener *listener, void *data) {
+	struct wlr_idle_inhibitor_v1 *idle_inhibitor = data;
+	wl_signal_add(&idle_inhibitor->events.destroy, &server->idle_inhibitor_destroy);
+
+	checkidleinhibitor(NULL);
+}
+
+void createlocksurface(struct wl_listener *listener, void *data) {
+	struct SessionLock *lock = wl_container_of(listener, lock, new_surface);
+	struct wlr_session_lock_surface_v1 *lock_surface = data;
+	struct Monitor *m = lock_surface->output->data;
+	struct wlr_scene_tree *scene_tree = lock_surface->surface->data = 
+		wlr_scene_subsurface_tree_create(lock->scene, lock_surface->surface);
+	m->lock_surface = lock_surface;
+
+	wlr_scene_node_set_position(&scene_tree->node, m->m.x, m->m.y);
+	wlr_session_lock_surface_v1_configure(lock_surface, m->m.width, m->m.height);
+
+	LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface, destroylocksurface);
+
+	if (m == server->selmon) {
+		client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(server->seat));
+	}
 }

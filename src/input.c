@@ -332,9 +332,7 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 	return 0;
 }
 
-void
-keypress(struct wl_listener *listener, void *data)
-{
+void keypress(struct wl_listener *listener, void *data) {
 	int i;
 	/* This event is raised when a key is pressed or released. */
 	struct Keyboard *kb = wl_container_of(listener, kb, key);
@@ -378,9 +376,7 @@ keypress(struct wl_listener *listener, void *data)
 	}
 }
 
-void
-keypressmod(struct wl_listener *listener, void *data)
-{
+void keypressmod(struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
 	 * pressed. We simply communicate this to the client. */
 	struct Keyboard *kb = wl_container_of(listener, kb, modifiers);
@@ -396,9 +392,7 @@ keypressmod(struct wl_listener *listener, void *data)
 		&kb->wlr_keyboard->modifiers);
 }
 
-int
-keyrepeat(void *data)
-{
+int keyrepeat(void *data) {
 	struct Keyboard *kb = data;
 	int i;
 	if (kb->nsyms && kb->wlr_keyboard->repeat_info.rate > 0) {
@@ -410,4 +404,44 @@ keyrepeat(void *data)
 	}
 
 	return 0;
+}
+
+void cleanupkeyboard(struct wl_listener *listener, void *data) {
+	struct Keyboard *kb = wl_container_of(listener, kb, destroy);
+
+	wl_event_source_remove(kb->key_repeat_source);
+	wl_list_remove(&kb->link);
+	wl_list_remove(&kb->modifiers.link);
+	wl_list_remove(&kb->key.link);
+	wl_list_remove(&kb->destroy.link);
+	free(kb);
+}
+
+void createkeyboard(struct wlr_keyboard *keyboard) {
+	struct xkb_context *context;
+	struct xkb_keymap *keymap;
+	struct Keyboard *kb = keyboard->data = ecalloc(1, sizeof(*kb));
+	kb->wlr_keyboard = keyboard;
+
+	// Prepare an XKB keymap and assign it to the keyboard.
+	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	keymap = xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	wlr_keyboard_set_keymap(keyboard, keymap);
+	xkb_keymap_unref(keymap);
+	xkb_context_unref(context);
+	wlr_keyboard_set_repeat_info(keyboard, 25, 600);
+
+	// Here we set up listeners for keyboard events. 
+	LISTEN(&keyboard->events.modifiers, &kb->modifiers, keypressmod);
+	LISTEN(&keyboard->events.key, &kb->key, keypress);
+	LISTEN(&keyboard->base.events.destroy, &kb->destroy, cleanupkeyboard);
+
+	wlr_seat_set_keyboard(server->seat, keyboard);
+
+	kb->key_repeat_source = wl_event_loop_add_timer(
+			wl_display_get_event_loop(server->display), keyrepeat, kb);
+
+	// And add the keyboard to our list of keyboards
+	wl_list_insert(&server->keyboards, &kb->link);
 }

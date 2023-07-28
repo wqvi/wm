@@ -15,18 +15,6 @@ static const struct MonitorRule monrules[] = {
 	{ "eDP-1",    0.5,  1,      2,    WL_OUTPUT_TRANSFORM_NORMAL,   -1,  -1 },
 };
 
-/* keyboard */
-static const struct xkb_rule_names xkb_rules = {
-	/* can specify fields: rules, model, layout, variant, options */
-	/* example:
-	.options = "ctrl:nocaps",
-	*/
-	.options = NULL,
-};
-
-static const int repeat_rate = 25;
-static const int repeat_delay = 600;
-
 /* Trackpad */
 static const int tap_to_click = 1;
 static const int tap_and_drag = 1;
