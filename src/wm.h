@@ -1,12 +1,16 @@
 #ifndef WM_H
 #define WM_H
 
+#include <libinput.h>
+#include <limits.h>
 #include <linux/input-event-codes.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_cursor.h>
@@ -21,6 +25,7 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
@@ -314,41 +319,7 @@ void setmon(struct Client *c, struct Monitor *m, uint32_t newtags);
 
 void resize(struct Client *c, struct wlr_box geo, int interact);
 
-void motionabsolute(struct wl_listener *listener, void *data);
-
-void virtualkeyboard(struct wl_listener *listener, void *data);
-
-void urgent(struct wl_listener *listener, void *data);
-
-void setpsel(struct wl_listener *listener, void *data);
-
-void setsel(struct wl_listener *listener, void *data);
-
-void setcursor(struct wl_listener *listener, void *data);
-
-void outputmgrtest(struct wl_listener *listener, void *data);
-
-void outputmgrapply(struct wl_listener *listener, void *data);
-
-void locksession(struct wl_listener *listener, void *data);
-
-void inputdevice(struct wl_listener *listener, void *data);
-
-void createnotify(struct wl_listener *listener, void *data);
-
-void createmon(struct wl_listener *listener, void *data);
-
-void createlayersurface(struct wl_listener *listener, void *data);
-
-void createdecoration(struct wl_listener *listener, void *data);
-
-void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
-
-void unmapnotify(struct wl_listener *listener, void *data);
-
-void updatemons(struct wl_listener *listener, void *data);
-
-void updatetitle(struct wl_listener *listener, void *data);
+#include "listeners.h"
 
 #include "client.h"
 

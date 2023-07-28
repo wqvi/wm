@@ -1,51 +1,6 @@
 /*
  * See LICENSE file for copyright and license details.
  */
-#include <getopt.h>
-#include <libinput.h>
-#include <limits.h>
-#include <linux/input-event-codes.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <wayland-server-core.h>
-#include <wlr/backend.h>
-#include <wlr/backend/libinput.h>
-#include <wlr/render/allocator.h>
-#include <wlr/render/wlr_renderer.h>
-#include <wlr/types/wlr_data_control_v1.h>
-#include <wlr/types/wlr_data_device.h>
-#include <wlr/types/wlr_export_dmabuf_v1.h>
-#include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_idle.h>
-#include <wlr/types/wlr_idle_inhibit_v1.h>
-#include <wlr/types/wlr_idle_notify_v1.h>
-#include <wlr/types/wlr_input_device.h>
-#include <wlr/types/wlr_input_inhibitor.h>
-#include <wlr/types/wlr_keyboard.h>
-#include <wlr/types/wlr_layer_shell_v1.h>
-#include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_output_layout.h>
-#include <wlr/types/wlr_output_management_v1.h>
-#include <wlr/types/wlr_pointer.h>
-#include <wlr/types/wlr_presentation_time.h>
-#include <wlr/types/wlr_primary_selection.h>
-#include <wlr/types/wlr_primary_selection_v1.h>
-#include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_screencopy_v1.h>
-#include <wlr/types/wlr_seat.h>
-#include <wlr/types/wlr_server_decoration.h>
-#include <wlr/types/wlr_session_lock_v1.h>
-#include <wlr/types/wlr_single_pixel_buffer_v1.h>
-#include <wlr/types/wlr_subcompositor.h>
-#include <wlr/types/wlr_viewporter.h>
-#include <wlr/types/wlr_virtual_keyboard_v1.h>
-#include <wlr/types/wlr_xcursor_manager.h>
-#include <wlr/types/wlr_xdg_decoration_v1.h>
-#include <wlr/types/wlr_xdg_output_v1.h>
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/util/log.h>
 
 #include "wm.h"
 
@@ -61,42 +16,53 @@
 
 /* function declarations */
 static void applybounds(struct Client *c, struct wlr_box *bbox);
+
 static void applyrules(struct Client *c);
+
 static void arrange(struct Monitor *m);
-static void arrangelayer(struct Monitor *m, struct wl_list *list,
-		struct wlr_box *usable_area, int exclusive);
+
+static void arrangelayer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive);
+
 static void arrangelayers(struct Monitor *m);
-static void cleanupkeyboard(struct wl_listener *listener, void *data);
-static void cleanupmon(struct wl_listener *listener, void *data);
+
 static void closemon(struct Monitor *m);
-static void commitlayersurfacenotify(struct wl_listener *listener, void *data);
-static void commitnotify(struct wl_listener *listener, void *data);
+
 static void createkeyboard(struct wlr_keyboard *keyboard);
-static void createlocksurface(struct wl_listener *listener, void *data);
+
 static void createpointer(struct wlr_pointer *pointer);
+
 static struct Monitor *dirtomon(enum wlr_direction dir);
-static void focusmon(const union Arg *arg);
+
+static void focusmon(int dir);
+
 static void focusstack(const union Arg *arg);
-static void fullscreennotify(struct wl_listener *listener, void *data);
+
 static void incnmaster(const union Arg *arg);
+
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
-static void keypress(struct wl_listener *listener, void *data);
-static void keypressmod(struct wl_listener *listener, void *data);
+
 static int keyrepeat(void *data);
+
 static void killclient(const union Arg *arg);
-static void maplayersurfacenotify(struct wl_listener *listener, void *data);
-static void mapnotify(struct wl_listener *listener, void *data);
+
 static void maximizenotify(struct wl_listener *listener, void *data);
+
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
+
 static void printstatus(void);
-static void rendermon(struct wl_listener *listener, void *data);
+
 static void setfullscreen(struct Client *c, int fullscreen);
+
 static void setmfact(const union Arg *arg);
+
 static void tag(const union Arg *arg);
+
 static void tagmon(const union Arg *arg);
+
 static void tile(struct Monitor *m);
+
 static void togglefullscreen(const union Arg *arg);
-static void unlocksession(struct wl_listener *listener, void *data);
+
 static void view(const union Arg *arg);
 
 /* variables */
@@ -722,13 +688,11 @@ focusclient(struct Client *c, int lift)
 	client_activate_surface(client_surface(c), 1);
 }
 
-void
-focusmon(const union Arg *arg)
-{
+void focusmon(int dir) {
 	int i = 0, nmons = wl_list_length(&server->monitors);
 	if (nmons)
 		do /* don't switch to disabled mons */
-			server->selmon = dirtomon(arg->i);
+			server->selmon = dirtomon(dir);
 		while (!server->selmon->wlr_output->enabled && i++ < nmons);
 	focusclient(focustop(server->selmon), 1);
 }
@@ -874,10 +838,10 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			togglefullscreen(NULL);
 			return 1;
 		case XKB_KEY_comma:
-			focusmon(&(union Arg){.i = WLR_DIRECTION_LEFT});
+			focusmon(WLR_DIRECTION_LEFT);
 			return 1;
 		case XKB_KEY_period:
-			focusmon(&(union Arg){.i = WLR_DIRECTION_RIGHT});
+			focusmon(WLR_DIRECTION_RIGHT);
 			return 1;
 		default:
 			break;
@@ -943,11 +907,11 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			return 1;
 		case XKB_KEY_less:
 			tagmon(&(union Arg){.i = WLR_DIRECTION_LEFT});
-			focusmon(&(union Arg){.i = WLR_DIRECTION_LEFT});
+			focusmon(WLR_DIRECTION_LEFT);
 			return 1;
 		case XKB_KEY_greater:
 			tagmon(&(union Arg){.i = WLR_DIRECTION_RIGHT});
-			focusmon(&(union Arg){.i = WLR_DIRECTION_RIGHT});
+			focusmon(WLR_DIRECTION_RIGHT);
 			return 1;
 
 		default:
@@ -1489,7 +1453,7 @@ void tile(struct Monitor *m) {
 			struct wlr_box box = {
 				.x = m->w.x + (pixel_gap / 2),
 				.y = m->w.y + my + (pixel_gap / 2),
-				.width = mw - pixel_gap,
+				.width = mw - pixel_gap / 2,
 				.height = ((m->w.height - my) / (MIN(n, m->nmaster) - i)) - pixel_gap
 			};
 			resize(c, box, 0);
