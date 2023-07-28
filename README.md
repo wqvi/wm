@@ -5,6 +5,16 @@ I kinda got bored of sway and wanted something really really lightweight for spe
 You are free to just use it if you'd like. There's so many licenses here idk which one to pick.
 Thanks to everyone who worked on wayland, wlroots, swaywm, and dwl for making such a thing possible.
 
+## Features of wm
+
+- Gapped tiled windows only
+- Compact. Multiple translation units. This is a controversial take in the suckless community but having
+one giant spaghetti code for a code base is *NOT* readable. It never will be for anything large.
+- Global server structure instead of global variables floating around. Not super important but makes it
+neater in my opinion.
+- No more command line options. Somebar, gentoo-pipewire-launcher, dbus-update-activation-environment, and foot terminal server
+- At some point I'm going to try to get the vulkan renderer to be used but there are segfault issues with this.
+
 # dwl - dwm for Wayland
 
 Join us on our [Discord server] or at [#dwl] on irc.libera.chat.
