@@ -1466,11 +1466,10 @@ tagmon(const union Arg *arg)
 		setmon(sel, dirtomon(arg->i), 0);
 }
 
-void
-tile(struct Monitor *m)
-{
+void tile(struct Monitor *m) {
 	unsigned int i, n = 0, mw, my, ty;
 	struct Client *c;
+	const int pixel_gap = 8;
 
 	wl_list_for_each(c, &server->clients, link)
 		if (VISIBLEON(c, m) && !c->is_floating && !c->is_fullscreen)
@@ -1487,13 +1486,23 @@ tile(struct Monitor *m)
 		if (!VISIBLEON(c, m) || c->is_floating || c->is_fullscreen)
 			continue;
 		if (i < m->nmaster) {
-			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
-				.height = (m->w.height - my) / (MIN(n, m->nmaster) - i)}, 0);
-			my += c->geom.height;
+			struct wlr_box box = {
+				.x = m->w.x + (pixel_gap / 2),
+				.y = m->w.y + my + (pixel_gap / 2),
+				.width = mw - pixel_gap,
+				.height = ((m->w.height - my) / (MIN(n, m->nmaster) - i)) - pixel_gap
+			};
+			resize(c, box, 0);
+			my += c->geom.height + pixel_gap;
 		} else {
-			resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
-				.width = m->w.width - mw, .height = (m->w.height - ty) / (n - i)}, 0);
-			ty += c->geom.height;
+			struct wlr_box box = {
+				.x = (m->w.x + mw) + (pixel_gap / 2),
+				.y = (m->w.y + ty) + (pixel_gap / 2),
+				.width = (m->w.width - mw) - pixel_gap,
+				.height = ((m->w.height - ty) / (n - i)) - pixel_gap
+			};
+			resize(c, box, 0);
+			ty += c->geom.height + (pixel_gap / 2);
 		}
 		i++;
 	}
