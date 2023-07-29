@@ -41,6 +41,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
+#include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))

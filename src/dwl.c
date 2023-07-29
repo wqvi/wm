@@ -3,6 +3,9 @@
  */
 
 #include "wm.h"
+#include <GLES2/gl2.h>
+#include <wlr/render/egl.h>
+#include <wlr/render/gles2.h>
 
 static const char broken[] = "broken";
 // Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum
@@ -279,6 +282,20 @@ void createmon(struct wl_listener *listener, void *data) {
 	m->wlr_output = wlr_output;
 
 	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
+	struct wlr_egl *egl = wlr_gles2_renderer_get_egl(server->renderer);
+	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, wlr_egl_get_context(egl))) {
+		wlr_log(WLR_ERROR, "yea uhhhh something went wrong with the whole EGL thing here??? you're kinda on your own :)");
+		free(m);
+		return;
+	}
+
+	wlr_log(WLR_INFO, "Binding new stuffes to the monitor!");
+
+	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+		wlr_log(WLR_ERROR, "Failed to do the freeing of the egl context! This is definitely not supposed to happen!!! :)");
+		free(m);
+		return;
+	}
 
 	// Initialize monitor state using configured rules 
 	for (i = 0; i < LENGTH(m->layers); i++)
@@ -511,36 +528,6 @@ void incnmaster(int i) {
 	arrange(server->selmon);
 }
 
-void
-inputdevice(struct wl_listener *listener, void *data)
-{
-	/* This event is raised by the backend when a new input device becomes
-	 * available. */
-	struct wlr_input_device *device = data;
-	uint32_t caps;
-
-	switch (device->type) {
-	case WLR_INPUT_DEVICE_KEYBOARD:
-		createkeyboard(wlr_keyboard_from_input_device(device));
-		break;
-	case WLR_INPUT_DEVICE_POINTER:
-		createpointer(wlr_pointer_from_input_device(device));
-		break;
-	default:
-		/* TODO handle other input device types */
-		break;
-	}
-
-	/* We need to let the wlr_seat know what our capabilities are, which is
-	 * communiciated to the client. In dwl we always have a cursor, even if
-	 * there are no pointer devices, so we always include that capability. */
-	/* TODO do we actually require a cursor? */
-	caps = WL_SEAT_CAPABILITY_POINTER;
-	if (!wl_list_empty(&server->keyboards))
-		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-	wlr_seat_set_capabilities(server->seat, caps);
-}
-
 void killclient(void) {
 	struct Client *sel = get_top(server->selmon);
 	if (sel)
@@ -725,34 +712,6 @@ outputmgrtest(struct wl_listener *listener, void *data)
 {
 	struct wlr_output_configuration_v1 *config = data;
 	outputmgrapplyortest(config, 1);
-}
-
-void
-pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, double sy,
-		uint32_t time)
-{
-	struct timespec now;
-	int internal_call = !time;
-
-	if (!internal_call && c)
-		focusclient(c, 0);
-
-	/* If surface is NULL, clear pointer focus */
-	if (!surface) {
-		wlr_seat_pointer_notify_clear_focus(server->seat);
-		return;
-	}
-
-	if (internal_call) {
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		time = now.tv_sec * 1000 + now.tv_nsec / 1000000;
-	}
-
-	/* Let the client know that the mouse cursor has entered one
-	 * of its surfaces, and make keyboard focus follow if desired.
-	 * wlroots makes this a no-op if surface is already focused */
-	wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
-	wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
 }
 
 void
