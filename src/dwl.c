@@ -582,29 +582,6 @@ printstatus(void)
 	fflush(stdout);
 }
 
-void rendermon(struct wl_listener *listener, void *data) {
-	/* This function is called every time an output is ready to display a frame,
-	 * generally at the output's refresh rate (e.g. 60Hz). */
-	struct Monitor *m = wl_container_of(listener, m, frame);
-	struct Client *c;
-	struct timespec now;
-
-	/* Render if no XDG clients have an outstanding resize and are visible on
-	 * this monitor. */
-	wl_list_for_each(c, &server->clients, link) {
-		if (c->resize && !c->is_floating && client_is_rendered_on_mon(c, m) && !client_is_stopped(c)) {
-			goto skip;
-		}
-	}
-
-	wlr_scene_output_commit(m->scene_output);
-
-skip:
-	/* Let clients know a frame has been rendered */
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	wlr_scene_output_send_frame_done(m->scene_output, &now);
-}
-
 void
 resize(struct Client *c, struct wlr_box geo, int interact)
 {

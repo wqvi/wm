@@ -60,17 +60,38 @@ void closemon(struct Monitor *m) {
 	printstatus();
 }
 
-void createmon(struct wl_listener *listener, void *data) {
-	// This event is raised by the backend when a new output (aka a display or
-	// monitor) becomes available.
+static void create_new_server_monitor(struct wlr_output *wlr_output) {
+	struct wlr_egl *egl;
+	struct Monitor *monitor = wlr_output->data = ecalloc(1, sizeof(struct Monitor));
+	monitor->wlr_output = wlr_output;
+
+	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
+	egl = wlr_gles2_renderer_get_egl(server->renderer);
+
+	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, wlr_egl_get_context(egl))) {
+		goto error;
+	}
+
+	wlr_log(WLR_INFO, "Binding egl resources");
+
+	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+		goto error;
+	}
+
+error:
+	wlr_log(WLR_ERROR, "Failed eglMakeCurrent");
+	free(monitor);
+	return;
+}
+
+void new_monitor_available(struct wl_listener *listener, void *data) {
 	struct wlr_output *wlr_output = data;
 	const struct MonitorRule *r;
 	size_t i;
 	struct wlr_egl *egl;
 	struct Monitor *m = wlr_output->data = ecalloc(1, sizeof(*m));
-	static const struct MonitorRule monrules[2] = {
-		{ NULL, 0.55, 1, 1, WL_OUTPUT_TRANSFORM_NORMAL, +1, -1 },
-		{ "eDP-1", 0.5,  1, 2, WL_OUTPUT_TRANSFORM_NORMAL, -1, -1 },
+	static const struct MonitorRule monrules[1] = {
+		{ NULL, 0.5, 1, 1, WL_OUTPUT_TRANSFORM_NORMAL, +1, -1 },
 	};
 
 	m->wlr_output = wlr_output;
@@ -222,4 +243,27 @@ struct Client *monitor_get_top_client(struct Monitor *m) {
 	}
 
 	return NULL;
+}
+
+void rendermon(struct wl_listener *listener, void *data) {
+	// This function is called every time an output is ready to display a frame,
+	// generally at the output's refresh rate (e.g. 60Hz).
+	struct Monitor *m = wl_container_of(listener, m, frame);
+	struct Client *c;
+	struct timespec now;
+
+	// Render if no XDG clients have an outstanding resize and are visible on
+	// this monitor.
+	wl_list_for_each(c, &server->clients, link) {
+		if (c->resize && !c->is_floating && client_is_rendered_on_mon(c, m) && !client_is_stopped(c)) {
+			goto skip;
+		}
+	}
+
+	wlr_scene_output_commit(m->scene_output);
+
+skip:
+	/* Let clients know a frame has been rendered */
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	wlr_scene_output_send_frame_done(m->scene_output, &now);
 }

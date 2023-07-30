@@ -23,7 +23,7 @@ void inputdevice(struct wl_listener *listener, void *data);
 
 void createnotify(struct wl_listener *listener, void *data);
 
-void createmon(struct wl_listener *listener, void *data);
+void new_monitor_available(struct wl_listener *listener, void *data);
 
 void createlayersurface(struct wl_listener *listener, void *data);
 

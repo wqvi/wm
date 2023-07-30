@@ -49,7 +49,7 @@ void setup(void) {
 	server->layout_change.notify = updatemons;
 	server->new_input.notify = inputdevice;
 	server->new_virtual_keyboard.notify = virtualkeyboard;
-	server->new_output.notify = createmon;
+	server->new_output.notify = new_monitor_available;
 	server->new_xdg_surface.notify = createnotify;
 	server->new_xdg_decoration.notify = createdecoration;
 	server->new_layer_shell_surface.notify = createlayersurface;
