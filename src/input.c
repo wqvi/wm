@@ -1,7 +1,7 @@
 #include "wm.h"
 
 static void focus_prev(void) {
-	struct Client *c, *sel = get_top(server->selmon);
+	struct Client *c, *sel = monitor_get_top_client(server->selmon);
 	if (!sel || sel->is_fullscreen)
 		return;
 
@@ -17,7 +17,7 @@ static void focus_prev(void) {
 }
 
 static void focus_next(void) {
-	struct Client *c, *sel = get_top(server->selmon);
+	struct Client *c, *sel = monitor_get_top_client(server->selmon);
 	if (!sel || sel->is_fullscreen)
 		return;
 

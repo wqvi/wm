@@ -117,6 +117,19 @@ struct LayerSurface {
 	struct wl_listener surface_commit;
 };
 
+struct texture {
+	GLuint target;
+	GLuint id;
+	int has_alpha;
+	int width;
+	int height;
+};
+
+struct framebuffer {
+	GLuint fb;
+	struct texture texture;
+};
+
 struct Monitor {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
@@ -315,7 +328,7 @@ void destroysessionmgr(struct wl_listener *listener, void *data);
 
 void focusclient(struct Client *c, int lift);
 
-struct Client *get_top(struct Monitor *m);
+struct Client *monitor_get_top_client(struct Monitor *m);
 
 void client_notify_enter(struct wlr_surface *s, struct wlr_keyboard *kb);
 
