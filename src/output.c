@@ -1,6 +1,54 @@
 #include "wm.h"
 
-void arrange(struct Monitor *m) {
+static void monitor_tile_clients(struct Monitor *m) {
+	unsigned int i, n = 0, mw, my, ty;
+	struct Client *c;
+	const int pixel_gap = 8;
+
+	wl_list_for_each(c, &server->clients, link) {
+		if (VISIBLEON(c, m) && !c->is_fullscreen) {
+			n++;
+		}
+	}
+
+	if (n == 0) {
+		return;
+	}
+
+	if (n > m->nmaster) {
+		mw = m->nmaster ? m->w.width * m->mfact : 0;
+	} else {
+		mw = m->w.width;
+	}
+
+	i = my = ty = 0;
+	wl_list_for_each(c, &server->clients, link) {
+		if (!VISIBLEON(c, m) || c->is_fullscreen)
+			continue;
+		if (i < m->nmaster) {
+			struct wlr_box box = {
+				.x = m->w.x + (pixel_gap / 2),
+				.y = m->w.y + my + (pixel_gap / 2),
+				.width = mw - pixel_gap / 2,
+				.height = ((m->w.height - my) / (MIN(n, m->nmaster) - i)) - pixel_gap
+			};
+			client_resize(c, box, 0);
+			my += c->geom.height + pixel_gap;
+		} else {
+			struct wlr_box box = {
+				.x = (m->w.x + mw) + (pixel_gap / 2),
+				.y = (m->w.y + ty) + (pixel_gap / 2),
+				.width = (m->w.width - mw) - pixel_gap,
+				.height = ((m->w.height - ty) / (n - i)) - pixel_gap
+			};
+			client_resize(c, box, 0);
+			ty += c->geom.height + (pixel_gap / 2);
+		}
+		i++;
+	}
+}
+
+void monitor_arrange(struct Monitor *m) {
 	struct Client *c;
 	wl_list_for_each(c, &server->clients, link)
 		if (c->mon == m)
@@ -9,7 +57,7 @@ void arrange(struct Monitor *m) {
 	wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
 			(c = monitor_get_top_client(m)) && c->is_fullscreen);
 
-	tile(m);
+	monitor_tile_clients(m);
 	motionnotify(0);
 	checkidleinhibitor(NULL);
 }
@@ -32,67 +80,43 @@ void cleanupmon(struct wl_listener *listener, void *data) {
 	wlr_scene_output_destroy(m->scene_output);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
 
-	closemon(m);
+	monitor_close(m);
 	free(m);
 }
 
-void closemon(struct Monitor *m) {
+void monitor_close(struct Monitor *m) {
 	// update selmon if needed and
 	// move closed monitor's clients to the focused one
 	struct Client *c;
 	if (wl_list_empty(&server->monitors)) {
 		server->selmon = NULL;
 	} else if (m == server->selmon) {
-		int nmons = wl_list_length(&server->monitors), i = 0;
-		do // don't switch to disabled mons
+		int i = 0;
+		int nmons = wl_list_length(&server->monitors);
+		do { // don't switch to disabled mons
 			server->selmon = wl_container_of(server->monitors.next, server->selmon, link);
-		while (!server->selmon->wlr_output->enabled && i++ < nmons);
+		} while (!server->selmon->wlr_output->enabled && i++ < nmons);
 	}
 
 	wl_list_for_each(c, &server->clients, link) {
-		if (c->is_floating && c->geom.x > m->m.width)
-			resize(c, (struct wlr_box){.x = c->geom.x - m->w.width, .y = c->geom.y,
+		if (c->is_floating && c->geom.x > m->m.width) {
+			client_resize(c, (struct wlr_box){.x = c->geom.x - m->w.width, .y = c->geom.y,
 				.width = c->geom.width, .height = c->geom.height}, 0);
-		if (c->mon == m)
-			setmon(c, server->selmon, c->tags);
+		}
+		if (c->mon == m) {
+			monitor_set(c, server->selmon, c->tags);
+		}
 	}
-	focusclient(monitor_get_top_client(server->selmon), 1);
+
+	client_focus(monitor_get_top_client(server->selmon), 1);
 	printstatus();
-}
-
-static void create_new_server_monitor(struct wlr_output *wlr_output) {
-	struct wlr_egl *egl;
-	struct Monitor *monitor = wlr_output->data = ecalloc(1, sizeof(struct Monitor));
-	monitor->wlr_output = wlr_output;
-
-	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
-	egl = wlr_gles2_renderer_get_egl(server->renderer);
-
-	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, wlr_egl_get_context(egl))) {
-		goto error;
-	}
-
-	wlr_log(WLR_INFO, "Binding egl resources");
-
-	if (!eglMakeCurrent(wlr_egl_get_display(egl), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-		goto error;
-	}
-
-error:
-	wlr_log(WLR_ERROR, "Failed eglMakeCurrent");
-	free(monitor);
-	return;
 }
 
 void new_monitor_available(struct wl_listener *listener, void *data) {
 	struct wlr_output *wlr_output = data;
-	const struct MonitorRule *r;
 	size_t i;
 	struct wlr_egl *egl;
 	struct Monitor *m = wlr_output->data = ecalloc(1, sizeof(*m));
-	static const struct MonitorRule monrules[1] = {
-		{ NULL, 0.5, 1, 1, WL_OUTPUT_TRANSFORM_NORMAL, +1, -1 },
-	};
 
 	m->wlr_output = wlr_output;
 
@@ -116,18 +140,14 @@ void new_monitor_available(struct wl_listener *listener, void *data) {
 	for (i = 0; i < LENGTH(m->layers); i++)
 		wl_list_init(&m->layers[i]);
 	m->tagset[0] = m->tagset[1] = 1;
-	for (r = monrules; r < END(monrules); r++) {
-		if (!r->name || strstr(wlr_output->name, r->name)) {
-			m->mfact = r->mfact;
-			m->nmaster = r->nmaster;
-			wlr_output_set_scale(wlr_output, r->scale);
-			wlr_xcursor_manager_load(server->cursor_mgr, r->scale);
-			wlr_output_set_transform(wlr_output, r->rr);
-			m->m.x = r->x;
-			m->m.y = r->y;
-			break;
-		}
-	}
+
+	m->mfact = 0.5f;
+	m->nmaster = 1;
+	wlr_output_set_scale(wlr_output, 1.0f);
+	wlr_xcursor_manager_load(server->cursor_mgr, 1.0f);
+	wlr_output_set_transform(wlr_output, WL_OUTPUT_TRANSFORM_NORMAL);
+	m->m.x = 1;
+	m->m.y = -1;
 
 	// The mode is a tuple of (width, height, refresh rate), and each
 	// monitor supports only a specific set of modes. We just pick the
@@ -174,7 +194,7 @@ void new_monitor_available(struct wl_listener *listener, void *data) {
 		wlr_output_layout_add(server->output_layout, wlr_output, m->m.x, m->m.y);
 }
 
-void arrangelayer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive) {
+void monitor_arrange_layer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive) {
 	struct LayerSurface *layersurface;
 	struct wlr_box full_area = m->m;
 
@@ -182,18 +202,18 @@ void arrangelayer(struct Monitor *m, struct wl_list *list, struct wlr_box *usabl
 		struct wlr_layer_surface_v1 *wlr_layer_surface = layersurface->layer_surface;
 		struct wlr_layer_surface_v1_state *state = &wlr_layer_surface->current;
 
-		if (exclusive != (state->exclusive_zone > 0))
+		if (exclusive != (state->exclusive_zone > 0)) {
 			continue;
+		}
 
 		wlr_scene_layer_surface_v1_configure(layersurface->scene_layer, &full_area, usable_area);
-		wlr_scene_node_set_position(&layersurface->popups->node,
-				layersurface->scene->node.x, layersurface->scene->node.y);
+		wlr_scene_node_set_position(&layersurface->popups->node, layersurface->scene->node.x, layersurface->scene->node.y);
 		layersurface->geom.x = layersurface->scene->node.x;
 		layersurface->geom.y = layersurface->scene->node.y;
 	}
 }
 
-void arrangelayers(struct Monitor *m) {
+void monitor_arrange_layers(struct Monitor *m) {
 	int i;
 	struct wlr_box usable_area = m->m;
 	uint32_t layers_above_shell[] = {
@@ -205,19 +225,20 @@ void arrangelayers(struct Monitor *m) {
 	if (!m->wlr_output->enabled)
 		return;
 
-	// Arrange exclusive surfaces from top->bottom
+	// Arrange exclusive surfaces from top to bottom
 	for (i = 3; i >= 0; i--) {
-		arrangelayer(m, &m->layers[i], &usable_area, 1);
+		monitor_arrange_layer(m, &m->layers[i], &usable_area, 1);
 	}
 
 	if (memcmp(&usable_area, &m->w, sizeof(struct wlr_box))) {
 		m->w = usable_area;
-		arrange(m);
+		monitor_arrange(m);
 	}
 
-	// Arrange non-exlusive surfaces from top->bottom
-	for (i = 3; i >= 0; i--)
-		arrangelayer(m, &m->layers[i], &usable_area, 0);
+	// Arrange non-exlusive surfaces from top to bottom
+	for (i = 3; i >= 0; i--) {
+		monitor_arrange_layer(m, &m->layers[i], &usable_area, 0);
+	}
 
 	// Find topmost keyboard interactive layer, if such a layer exists
 	for (i = 0; i < LENGTH(layers_above_shell); i++) {
@@ -226,7 +247,7 @@ void arrangelayers(struct Monitor *m) {
 			if (!server->locked && layersurface->layer_surface->current.keyboard_interactive
 					&& layersurface->mapped) {
 				// Deactivate the focused client.
-				focusclient(NULL, 0);
+				client_focus(NULL, 0);
 				server->exclusive_focus = layersurface;
 				client_notify_enter(layersurface->layer_surface->surface, wlr_seat_get_keyboard(server->seat));
 				return;
@@ -263,7 +284,51 @@ void rendermon(struct wl_listener *listener, void *data) {
 	wlr_scene_output_commit(m->scene_output);
 
 skip:
-	/* Let clients know a frame has been rendered */
+	// Let clients know a frame has been rendered
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	wlr_scene_output_send_frame_done(m->scene_output, &now);
 }
+
+struct Monitor *monitor_get_by_direction(enum wlr_direction dir) {
+	struct wlr_output *next;
+	if (!wlr_output_layout_get(server->output_layout, server->selmon->wlr_output)) {
+		return server->selmon;
+	}
+	
+	if ((next = wlr_output_layout_adjacent_output(server->output_layout,
+			dir, server->selmon->wlr_output, server->selmon->m.x, server->selmon->m.y))) {
+		return next->data;
+	}
+	
+	if ((next = wlr_output_layout_farthest_output(server->output_layout,
+			dir ^ (WLR_DIRECTION_LEFT|WLR_DIRECTION_RIGHT),
+			server->selmon->wlr_output, server->selmon->m.x, server->selmon->m.y))) {
+		return next->data;
+	}
+
+	return server->selmon;
+}
+
+void monitor_set(struct Client *c, struct Monitor *m, uint32_t newtags) {
+	struct Monitor *oldmon = c->mon;
+
+	if (oldmon == m)
+		return;
+	c->mon = m;
+	c->prev = c->geom;
+
+	// TODO leave/enter is not optimal but works
+	if (oldmon) {
+		wlr_surface_send_leave(client_surface(c), oldmon->wlr_output);
+		monitor_arrange(oldmon);
+	}
+	if (m) {
+		// Make sure window actually overlaps with the monitor
+		client_resize(c, c->geom, 0);
+		wlr_surface_send_enter(client_surface(c), m->wlr_output);
+		c->tags = newtags ? newtags : m->tagset[m->seltags]; // assign tags of target monitor
+		setfullscreen(c, c->is_fullscreen); // This will call arrange(c->mon)
+	}
+	client_focus(monitor_get_top_client(server->selmon), 1);
+}
+

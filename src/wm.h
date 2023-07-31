@@ -54,7 +54,7 @@
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define END(A)                  ((A) + LENGTH(A))
-#define TAGMASK                 ((1u << tagcount) - 1)
+#define TAGMASK                 ((1u << 9) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define IDLE_NOTIFY_ACTIVITY wlr_idle_notify_activity(server->idle, server->seat), wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat)
 #define MODKEY WLR_MODIFIER_LOGO
@@ -117,19 +117,6 @@ struct LayerSurface {
 	struct wl_listener surface_commit;
 };
 
-struct texture {
-	GLuint target;
-	GLuint id;
-	int has_alpha;
-	int width;
-	int height;
-};
-
-struct framebuffer {
-	GLuint fb;
-	struct texture texture;
-};
-
 struct Monitor {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
@@ -147,23 +134,6 @@ struct Monitor {
 	uint32_t tagset[2];
 	double mfact;
 	int nmaster;
-};
-
-struct MonitorRule {
-	const char *name;
-	float mfact;
-	int nmaster;
-	float scale;
-	enum wl_output_transform rr;
-	int x, y;
-};
-
-struct Rule {
-	const char *id;
-	const char *title;
-	uint32_t tags;
-	int is_floating;
-	int monitor;
 };
 
 struct SessionLock {
@@ -326,8 +296,6 @@ void destroysessionlock(struct wl_listener *listener, void *data);
 
 void destroysessionmgr(struct wl_listener *listener, void *data);
 
-void focusclient(struct Client *c, int lift);
-
 struct Client *monitor_get_top_client(struct Monitor *m);
 
 void client_notify_enter(struct wlr_surface *s, struct wlr_keyboard *kb);
@@ -336,35 +304,27 @@ struct wlr_scene_node *xytonode(double x, double y, struct wlr_surface **psurfac
 
 void pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, double sy, uint32_t time);
 
-void setmon(struct Client *c, struct Monitor *m, uint32_t newtags);
-
-void resize(struct Client *c, struct wlr_box geo, int interact);
+void monitor_set(struct Client *c, struct Monitor *m, uint32_t newtags);
 
 void applybounds(struct Client *c, struct wlr_box *bbox);
 
 void applyrules(struct Client *c);
 
-void arrange(struct Monitor *m);
+void monitor_arrange(struct Monitor *m);
 
-void arrangelayer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive);
+void monitor_arrange_layer(struct Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive);
 
-void arrangelayers(struct Monitor *m);
+void monitor_arrange_layers(struct Monitor *m);
 
-void closemon(struct Monitor *m);
+void monitor_close(struct Monitor *m);
 
 void createkeyboard(struct wlr_keyboard *keyboard);
 
 void createpointer(struct wlr_pointer *pointer);
 
-struct Monitor *dirtomon(enum wlr_direction dir);
-
-void focusmon(int dir);
-
-int keybinding(uint32_t mods, xkb_keysym_t sym);
+struct Monitor *monitor_get_by_direction(enum wlr_direction dir);
 
 int keyrepeat(void *data);
-
-void killclient(void);
 
 void maximizenotify(struct wl_listener *listener, void *data);
 
@@ -373,18 +333,6 @@ void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
 void printstatus(void);
 
 void setfullscreen(struct Client *c, int fullscreen);
-
-void tag(uint32_t ui);
-
-void tagmon(int dir);
-
-void tile(struct Monitor *m);
-
-void togglefullscreen(void);
-
-void view(uint32_t ui);
-
-void incnmaster(int i);
 
 #include "listeners.h"
 

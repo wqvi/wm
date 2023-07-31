@@ -3,6 +3,105 @@
 #include "wm.h"
 #include "client.h"
 
+void client_focus(struct Client *c, int lift) {
+	struct wlr_surface *old = server->seat->keyboard_state.focused_surface;
+	int i, unused_lx, unused_ly, old_client_type;
+	struct Client *old_c = NULL;
+	struct LayerSurface *old_l = NULL;
+
+	if (server->locked)
+		return;
+
+	// Raise client in stacking order if requested
+	if (c && lift)
+		wlr_scene_node_raise_to_top(&c->scene->node);
+
+	if (c && client_surface(c) == old)
+		return;
+
+	if ((old_client_type = toplevel_from_wlr_surface(old, &old_c, &old_l)) == XDGShell) {
+		struct wlr_xdg_popup *popup, *tmp;
+		wl_list_for_each_safe(popup, tmp, &old_c->surface->popups, link)
+			wlr_xdg_popup_destroy(popup);
+	}
+
+	// Put the new client atop the focus stack and select its monitor
+	if (c) {
+		wl_list_remove(&c->flink);
+		wl_list_insert(&server->focus_stack, &c->flink);
+		server->selmon = c->mon;
+		c->is_urgent = 0;
+		client_restack_surface(c);
+
+		// Don't change border color if there is an exclusive focus or we are
+		// handling a drag operation 
+		if (!server->exclusive_focus && !server->seat->drag) {
+			for (i = 0; i < 4; i++) {
+				wlr_scene_rect_set_color(c->border[i], (float[]){1.0f, 1.0f, 0.0f, 1.0f});
+			}
+		}
+	}
+
+	// Deactivate old client if focus is changing
+	if (old && (!c || client_surface(c) != old)) {
+		// If an overlay is focused, don't focus or activate the client,
+		// but only update its position in fstack to render its border with focuscolor
+		// and focus it after the overlay is closed.
+		if (old_client_type == LayerShell && wlr_scene_node_coords(
+					&old_l->scene->node, &unused_lx, &unused_ly)
+				&& old_l->layer_surface->current.layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
+			return;
+		} else if (old_c && old_c == server->exclusive_focus && client_wants_focus(old_c)) {
+			return;
+		// Don't deactivate old client if the new one wants focus, as this causes issues with winecfg
+		// and probably other clients 
+		} else if (old_c && (!c || !client_wants_focus(c))) {
+			for (i = 0; i < 4; i++)
+				wlr_scene_rect_set_color(old_c->border[i], (float[]){0.5f, 0.5f, 0.5f, 1.0f});
+
+			client_activate_surface(old, 0);
+		}
+	}
+	printstatus();
+
+	if (!c) {
+		// With no client, all we have left is to clear focus 
+		wlr_seat_keyboard_notify_clear_focus(server->seat);
+		return;
+	}
+
+	// Change cursor surface
+	motionnotify(0);
+
+	// Have a client, so focus its top-level wlr_surface
+	client_notify_enter(client_surface(c), wlr_seat_get_keyboard(server->seat));
+
+	// Activate the new client
+	client_activate_surface(client_surface(c), 1);
+}
+
+void client_resize(struct Client *c, struct wlr_box geo, int interact) {
+	struct wlr_box *bbox = interact ? &server->sgeom : &c->mon->w;
+	client_set_bounds(c, geo.width, geo.height);
+	c->geom = geo;
+	applybounds(c, bbox);
+
+	// Update scene-graph, including borders
+	wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
+	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw);
+	wlr_scene_rect_set_size(c->border[0], c->geom.width, c->bw);
+	wlr_scene_rect_set_size(c->border[1], c->geom.width, c->bw);
+	wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - 2 * c->bw);
+	wlr_scene_rect_set_size(c->border[3], c->bw, c->geom.height - 2 * c->bw);
+	wlr_scene_node_set_position(&c->border[1]->node, 0, c->geom.height - c->bw);
+	wlr_scene_node_set_position(&c->border[2]->node, 0, c->bw);
+	wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->bw, c->bw);
+
+	// this is a no-op if size hasn't changed
+	c->resize = client_set_size(c, c->geom.width - 2 * c->bw,
+			c->geom.height - 2 * c->bw);
+}
+
 void client_get_size_hints(struct Client *c, struct wlr_box *max, struct wlr_box *min) {
 	struct wlr_xdg_toplevel *toplevel;
 	struct wlr_xdg_toplevel_state *state;

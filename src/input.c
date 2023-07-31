@@ -1,19 +1,91 @@
 #include "wm.h"
 
+static void togglefullscreen(void) {
+	struct Client *sel = monitor_get_top_client(server->selmon);
+	if (sel) {
+		setfullscreen(sel, !sel->is_fullscreen);
+	}
+}
+
+static void incnmaster(int i) {
+	if (!server->selmon) return;
+
+	// this needs to be improved
+	// there needs to be some comparison to prevent
+	// nmaster from becoming to astronomically high up
+	server->selmon->nmaster = MAX(server->selmon->nmaster + i, 0);
+	monitor_arrange(server->selmon);
+}
+
+static void monitor_tag(enum wlr_direction dir) {
+	struct Client *sel = monitor_get_top_client(server->selmon);
+	if (sel) {
+		monitor_set(sel, monitor_get_by_direction(dir), 0);
+	}
+}
+
+static void monitor_focus(int dir) {
+	int i = 0;
+	int nmons = wl_list_length(&server->monitors);
+	if (nmons) {
+		do { // don't switch to disabled mons
+			server->selmon = monitor_get_by_direction(dir);
+		} while (!server->selmon->wlr_output->enabled && i++ < nmons);
+	}
+
+	client_focus(monitor_get_top_client(server->selmon), 1);
+}
+
+static void tag(uint32_t ui) {
+	struct Client *sel = monitor_get_top_client(server->selmon);
+	if (sel && ui & TAGMASK) {
+		sel->tags = ui & TAGMASK;
+		client_focus(monitor_get_top_client(server->selmon), 1);
+		monitor_arrange(server->selmon);
+	}
+
+	printstatus();
+}
+
+static void kill_focused_client(void) {
+	struct Client *sel = monitor_get_top_client(server->selmon);
+	if (sel)
+		client_send_close(sel);
+}
+
+static void view(uint32_t ui) {
+	if (!server->selmon || (ui & TAGMASK) == server->selmon->tagset[server->selmon->seltags]) {
+		return;
+	}
+
+	server->selmon->seltags ^= 1; // toggle sel tagset
+	if (ui & TAGMASK) {
+		server->selmon->tagset[server->selmon->seltags] = ui & TAGMASK;
+	}
+
+	client_focus(monitor_get_top_client(server->selmon), 1);
+	monitor_arrange(server->selmon);
+	printstatus();
+}
+
 static void focus_prev(void) {
 	struct Client *c, *sel = monitor_get_top_client(server->selmon);
-	if (!sel || sel->is_fullscreen)
+	if (!sel || sel->is_fullscreen) {
 		return;
+	}
 
 	wl_list_for_each_reverse(c, &sel->link, link) {
-		if (&c->link == &server->clients)
+		if (&c->link == &server->clients) {
 			continue; // wrap past the sentinel node
-		if (VISIBLEON(c, server->selmon))
+		}
+
+		if (VISIBLEON(c, server->selmon)) {
 			break; // found it
+		}
 	}
 
 	// if only one client is visible on server->selmon, then c == sel
-	focusclient(c, 1);
+	client_focus(c, 1);
 }
 
 static void focus_next(void) {
@@ -22,14 +94,17 @@ static void focus_next(void) {
 		return;
 
 	wl_list_for_each(c, &sel->link, link) {
-		if (&c->link == &server->clients)
+		if (&c->link == &server->clients) {
 			continue; // wrap past the sentinel node
-		if (VISIBLEON(c, server->selmon))
+		}
+
+		if (VISIBLEON(c, server->selmon)) {
 			break; // found it - dwl source code author
+		}
 	}
 
 	// if only one client is visible on server->selmon, then c == sel
-	focusclient(c, 1);
+	client_focus(c, 1);
 }
 
 void axisnotify(struct wl_listener *listener, void *data) {
@@ -90,118 +165,52 @@ void buttonpress(struct wl_listener *listener, void *data) {
 	struct wlr_pointer_button_event *event = data;
 	struct wlr_keyboard *keyboard;
 	uint32_t mods;
-	struct Client *c;
 
 	IDLE_NOTIFY_ACTIVITY;
 
-	switch (event->state) {
-	case WLR_BUTTON_PRESSED:
-		server->cursor_mode = CurPressed;
-		if (server->locked)
-			break;
-
-		/* Change focus if the button was _pressed_ over a client */
-		xytonode(server->cursor->x, server->cursor->y, NULL, &c, NULL, NULL, NULL);
-		if (c && (client_wants_focus(c)))
-			focusclient(c, 1);
-
+	if (event->state == WLR_BUTTON_PRESSED && !server->locked) {
 		keyboard = wlr_seat_get_keyboard(server->seat);
 		mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
 		handle_mouse_button(mods, event->button);
-		break;
-	case WLR_BUTTON_RELEASED:
-		/* If you released any buttons, we exit interactive move/resize mode. */
-		if (!server->locked && server->cursor_mode != CurNormal && server->cursor_mode != CurPressed) {
-			server->cursor_mode = CurNormal;
-			/* Clear the pointer focus, this way if the cursor is over a surface
-			 * we will send an enter event after which the client will provide us
-			 * a cursor surface */
-			wlr_seat_pointer_clear_focus(server->seat);
-			motionnotify(0);
-			/* Drop the window off on its new monitor */
-			server->selmon = xytomon(server->output_layout, server->cursor->x, server->cursor->y);
-			setmon(server->grabc, server->selmon, 0);
-			return;
-		} else {
-			server->cursor_mode = CurNormal;
-		}
-		break;
 	}
-	/* If the event wasn't handled by the compositor, notify the client with
-	 * pointer focus that a button press has occurred */
-	wlr_seat_pointer_notify_button(server->seat,
-			event->time_msec, event->button, event->state);
+
+	// If the event wasn't handled by the compositor, notify the client with
+	// pointer focus that a button press has occurred
+	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
 
 void cursorframe(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits an frame
-	 * event. Frame events are sent after regular pointer events to group
-	 * multiple events together. For instance, two axis events may happen at the
-	 * same time, in which case a frame event won't be sent in between. */
-	/* Notify the client with pointer focus of the frame event. */
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
 void motionnotify(uint32_t time) {
 	double sx = 0, sy = 0;
-	struct Client *c = NULL, *w = NULL;
-	struct LayerSurface *l = NULL;
-	int type;
+	struct Client *c = NULL;
 	struct wlr_surface *surface = NULL;
 
-	/* time is 0 in internal calls meant to restore pointer focus. */
+	// time is 0 in internal calls meant to restore pointer focus.
 	if (time) {
 		IDLE_NOTIFY_ACTIVITY;
 
-		/* Update selmon (even while dragging a window) */
+		// Update selmon (even while dragging a window)
 		server->selmon = xytomon(server->output_layout, server->cursor->x, server->cursor->y);
 	}
 
-	/* Update drag icon's position */
-
-	/* If we are currently grabbing the mouse, handle and return */
-	if (server->cursor_mode == CurMove) {
-		/* Move the grabbed client to the new position. */
-		resize(server->grabc, (struct wlr_box){.x = server->cursor->x - server->grabcx, .y = server->cursor->y - server->grabcy,
-			.width = server->grabc->geom.width, .height = server->grabc->geom.height}, 1);
-		return;
-	} else if (server->cursor_mode == CurResize) {
-		resize(server->grabc, (struct wlr_box){.x = server->grabc->geom.x, .y = server->grabc->geom.y,
-			.width = server->cursor->x - server->grabc->geom.x, .height = server->cursor->y - server->grabc->geom.y}, 1);
-		return;
-	}
-
-	/* Find the client under the pointer and send the event along. */
+	// Find the client under the pointer and send the event along.
 	xytonode(server->cursor->x, server->cursor->y, &surface, &c, NULL, &sx, &sy);
 
-	if (server->cursor_mode == CurPressed && !server->seat->drag) {
-		if ((type = toplevel_from_wlr_surface(
-				 server->seat->pointer_state.focused_surface, &w, &l)) >= 0) {
-			c = w;
-			surface = server->seat->pointer_state.focused_surface;
-			sx = server->cursor->x - (type == LayerShell ? l->geom.x : w->geom.x);
-			sy = server->cursor->y - (type == LayerShell ? l->geom.y : w->geom.y);
-		}
-	}
-
-	/* If there's no client surface under the cursor, set the cursor image to a
-	 * default. This is what makes the cursor image appear when you move it
-	 * off of a client or over its border. */
-	if (!surface && !server->seat->drag && (!server->cursor_image || strcmp(server->cursor_image, "left_ptr")))
+	// If there's no client surface under the cursor, set the cursor image to a
+	// default. This is what makes the cursor image appear when you move it
+	// off of a client or over its border.
+	if (!surface && (!server->cursor_image || strcmp(server->cursor_image, "left_ptr"))) {
 		wlr_xcursor_manager_set_cursor_image(server->cursor_mgr, (server->cursor_image = "left_ptr"), server->cursor);
+	}
 
 	pointerfocus(c, surface, sx, sy, time);
 }
 
 void motionrelative(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits a _relative_
-	 * pointer motion event (i.e. a delta) */
 	struct wlr_pointer_motion_event *event = data;
-	/* The cursor doesn't move unless we tell it to. The cursor automatically
-	 * handles constraining the motion to the output layout, as well as any
-	 * special configuration applied for the specific input device which
-	 * generated the event. You can pass NULL for the device if you want to move
-	 * the cursor around without any input. */
 	wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x, event->delta_y);
 	motionnotify(event->time_msec);
 }
@@ -225,7 +234,7 @@ static void spawn_bemenu(void) {
 }
 
 
-int keybinding(uint32_t mods, xkb_keysym_t sym) {
+static int key_bindings(uint32_t mods, xkb_keysym_t sym) {
 	if (!(mods & MODKEY)) return 0;
 
 	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
@@ -236,38 +245,48 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 	switch (sym) {
 		case XKB_KEY_d:
 			spawn_bemenu();
-			break;
+			return 1;
+
 		case XKB_KEY_Return:
 			spawn_terminal();
 			return 1;
+
 		case XKB_KEY_Left:
 		case XKB_KEY_j:
 			focus_next();
 			return 1;
+
 		case XKB_KEY_Right:
 		case XKB_KEY_k:
 			focus_prev();
 			return 1;
+
 		case XKB_KEY_Up:
 		case XKB_KEY_i:
 			incnmaster(+1);
 			return 1;
+
 		case XKB_KEY_Down:
 		case XKB_KEY_u:
 			incnmaster(-1);
 			return 1;
+
 		case XKB_KEY_Tab:
 			view(0);
 			return 1;
+
 		case XKB_KEY_f:
 			togglefullscreen();
 			return 1;
+
 		case XKB_KEY_comma:
-			focusmon(WLR_DIRECTION_LEFT);
+			monitor_focus(WLR_DIRECTION_LEFT);
 			return 1;
+
 		case XKB_KEY_period:
-			focusmon(WLR_DIRECTION_RIGHT);
+			monitor_focus(WLR_DIRECTION_RIGHT);
 			return 1;
+
 		default:
 			break;
 	}
@@ -279,52 +298,65 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 			tag(1 << 0);
 			view(1 << 0);
 			return 1;
+
 		case XKB_KEY_at:	
 			tag(1 << 1);
 			view(1 << 1);
 			return 1;
+
 		case XKB_KEY_numbersign:
 			tag(1 << 2);
 			view(1 << 2);
 			return 1;
+
 		case XKB_KEY_dollar:	
 			tag(1 << 3);
 			view(1 << 3);
 			return 1;
+
 		case XKB_KEY_percent:	
 			tag(1 << 4);
 			view(1 << 4);
 			return 1;
+
 		case XKB_KEY_asciicircum:	
 			tag(1 << 5);
 			view(1 << 5);
 			return 1;
+
 		case XKB_KEY_ampersand:	
 			tag(1 << 6);
 			view(1 << 6);
 			return 1;
+
 		case XKB_KEY_asterisk:
 			tag(1 << 7);
 			view(1 << 7);
 			return 1;
+
 		case XKB_KEY_parenleft:
 			tag(1 << 8);
 			view(1 << 8);
 			return 1;
+
 		case XKB_KEY_E:
 			wl_display_terminate(server->display);
 			return 1;
+
 		case XKB_KEY_Q:
-			killclient();
+			kill_focused_client();
 			return 1;
+
 		case XKB_KEY_less:
-			tagmon(WLR_DIRECTION_LEFT);
-			focusmon(WLR_DIRECTION_LEFT);
+			monitor_tag(WLR_DIRECTION_LEFT);
+			monitor_focus(WLR_DIRECTION_LEFT);
 			return 1;
+
 		case XKB_KEY_greater:
-			tagmon(WLR_DIRECTION_RIGHT);
-			focusmon(WLR_DIRECTION_RIGHT);
+			monitor_tag(WLR_DIRECTION_RIGHT);
+			monitor_focus(WLR_DIRECTION_RIGHT);
 			return 1;
+
 		default:
 			break;
 	}
@@ -334,45 +366,44 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
 
 void keypress(struct wl_listener *listener, void *data) {
 	int i;
-	/* This event is raised when a key is pressed or released. */
+	// This event is raised when a key is pressed or released.
 	struct Keyboard *kb = wl_container_of(listener, kb, key);
 	struct wlr_keyboard_key_event *event = data;
 
-	/* Translate libinput keycode -> xkbcommon */
+	// Translate libinput keycode -> xkbcommon
 	uint32_t keycode = event->keycode + 8;
-	/* Get a list of keysyms based on the keymap for this keyboard */
+	// Get a list of keysyms based on the keymap for this keyboard
 	const xkb_keysym_t *syms;
-	int nsyms = xkb_state_key_get_syms(
-			kb->wlr_keyboard->xkb_state, keycode, &syms);
+	int nsyms = xkb_state_key_get_syms(kb->wlr_keyboard->xkb_state, keycode, &syms);
 
 	int handled = 0;
 	uint32_t mods = wlr_keyboard_get_modifiers(kb->wlr_keyboard);
 
 	IDLE_NOTIFY_ACTIVITY;
 
-	/* On _press_ if there is no active screen locker,
-	 * attempt to process a compositor keybinding. */
+	// On _press_ if there is no active screen locker,
+	// attempt to process a compositor keybinding.
 	if (!server->locked && !server->input_inhibit_mgr->active_inhibitor
 			&& event->state == WL_KEYBOARD_KEY_STATE_PRESSED)
-		for (i = 0; i < nsyms; i++)
-			handled = keybinding(mods, syms[i]) || handled;
+		for (i = 0; i < nsyms; i++) {
+			handled = key_bindings(mods, syms[i]) || handled;
+			if (handled) break;
+		}
 
 	if (handled && kb->wlr_keyboard->repeat_info.delay > 0) {
 		kb->mods = mods;
 		kb->keysyms = syms;
 		kb->nsyms = nsyms;
-		wl_event_source_timer_update(kb->key_repeat_source,
-				kb->wlr_keyboard->repeat_info.delay);
+		wl_event_source_timer_update(kb->key_repeat_source, kb->wlr_keyboard->repeat_info.delay);
 	} else {
 		kb->nsyms = 0;
 		wl_event_source_timer_update(kb->key_repeat_source, 0);
 	}
 
 	if (!handled) {
-		/* Pass unhandled keycodes along to the client. */
+		// Pass unhandled keycodes along to the client. 
 		wlr_seat_set_keyboard(server->seat, kb->wlr_keyboard);
-		wlr_seat_keyboard_notify_key(server->seat, event->time_msec,
-			event->keycode, event->state);
+		wlr_seat_keyboard_notify_key(server->seat, event->time_msec, event->keycode, event->state);
 	}
 }
 
@@ -388,19 +419,18 @@ void keypressmod(struct wl_listener *listener, void *data) {
 	 */
 	wlr_seat_set_keyboard(server->seat, kb->wlr_keyboard);
 	/* Send modifiers to the client. */
-	wlr_seat_keyboard_notify_modifiers(server->seat,
-		&kb->wlr_keyboard->modifiers);
+	wlr_seat_keyboard_notify_modifiers(server->seat, &kb->wlr_keyboard->modifiers);
 }
 
 int keyrepeat(void *data) {
 	struct Keyboard *kb = data;
 	int i;
 	if (kb->nsyms && kb->wlr_keyboard->repeat_info.rate > 0) {
-		wl_event_source_timer_update(kb->key_repeat_source,
-				1000 / kb->wlr_keyboard->repeat_info.rate);
+		wl_event_source_timer_update(kb->key_repeat_source, 1000 / kb->wlr_keyboard->repeat_info.rate);
 
-		for (i = 0; i < kb->nsyms; i++)
-			keybinding(kb->mods, kb->keysyms[i]);
+		for (i = 0; i < kb->nsyms; i++) {
+			key_bindings(kb->mods, kb->keysyms[i]);
+		}
 	}
 
 	return 0;
@@ -488,28 +518,25 @@ void createpointer(struct wlr_pointer *pointer) {
 void inputdevice(struct wl_listener *listener, void *data) {
 	// This event is raised by the backend when a new input device becomes
 	// available.
+	// I am not sure if this is correct but I remember the dwl people having an issue
+	// with this lovely function here so this is my workaround!
+	// No more calling wl_list_empty!
+	uint32_t caps = server->seat->capabilities;
 	struct wlr_input_device *device = data;
-	uint32_t caps;
 
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
 		createkeyboard(wlr_keyboard_from_input_device(device));
+		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		createpointer(wlr_pointer_from_input_device(device));
+		caps |= WL_SEAT_CAPABILITY_POINTER;
 		break;
 	default:
-		// this is meant for my thinkpad laptop so yea uh no need
 		break;
 	}
 
-	// We need to let the wlr_seat know what our capabilities are, which is
-	// communiciated to the client. In dwl we always have a cursor, even if
-	// there are no pointer devices, so we always include that capability.
-	// TODO do we actually require a cursor?
-	caps = WL_SEAT_CAPABILITY_POINTER;
-	if (!wl_list_empty(&server->keyboards))
-		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
 	wlr_seat_set_capabilities(server->seat, caps);
 }
 
@@ -517,8 +544,9 @@ void pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, doub
 	struct timespec now;
 	int internal_call = !time;
 
-	if (!internal_call && c)
-		focusclient(c, 0);
+	if (!internal_call && c) {
+		client_focus(c, 0);
+	}
 
 	// If surface is NULL, clear pointer focus 
 	if (!surface) {
@@ -536,4 +564,9 @@ void pointerfocus(struct Client *c, struct wlr_surface *surface, double sx, doub
 	// wlroots makes this a no-op if surface is already focused
 	wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 	wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
+}
+
+void virtualkeyboard(struct wl_listener *listener, void *data) {
+	struct wlr_virtual_keyboard_v1 *keyboard = data;
+	createkeyboard(&keyboard->keyboard);
 }

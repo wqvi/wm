@@ -1,5 +1,9 @@
 #ifndef CLIENT_H
 
+void client_focus(struct Client *c, int lift);
+
+void client_resize(struct Client *c, struct wlr_box geo, int interact);
+
 void client_get_size_hints(struct Client *c, struct wlr_box *max, struct wlr_box *min);
 
 struct wlr_surface *client_surface(struct Client *c);
