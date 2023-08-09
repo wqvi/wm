@@ -57,7 +57,8 @@
 #define TAGMASK                 ((1u << 9) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define IDLE_NOTIFY_ACTIVITY wlr_idle_notify_activity(server->idle, server->seat), wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat)
-#define MODKEY WLR_MODIFIER_LOGO
+// WLR_MODIFIER_LOGO
+#define MODKEY WLR_MODIFIER_ALT
 
 struct Client {
 	unsigned int type; // Never X11
