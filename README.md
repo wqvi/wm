@@ -1,3 +1,7 @@
+# Archived
+
+Been a while since I have contributed to this. Since then wlroots has updated and so has the parent repository of dwl
+
 # wm - a fork of dwl
 
 This is just my custom implementation of dwl that is intended to be specifically for my system.
